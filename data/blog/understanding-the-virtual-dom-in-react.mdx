@@ -1,0 +1,143 @@
+---
+title: 'Understanding the Virtual DOM in React'
+date: '2023-07-01'
+lastmod: '2023-07-01'
+tags: ['react-js']
+draft: false
+summary: 'Explore the Virtual DOM in React, the basics of React elements, the role of JSX, and the structure of the fiber node tree.'
+images: []
+---
+
+## Introduction
+The Document Object Model (DOM) is a programming interface for HTML and XML documents, but direct manipulation of the DOM can be slow and inefficient. This is where the Virtual DOM comes into play.
+
+- [React Elements](#react-elements)
+- [Components](#components)
+- [Virtual DOM and Fiber nodes tree](#virtual-dom-and-fiber-nodes-tree)
+- [Fiber nodes tree](#fiber-nodes-tree)
+- [Real-Life Analogy](#real-life-analogy)
+- [Conclusion](#conclusion)
+
+
+
+## [React Elements](#react-elements)
+In React, the HTML-like syntax, known as JSX, is a syntactic sugar that gets transpiled into `React.createElement()` or `_jsx()` during the build process using tools like Babel. Each `React.createElement()` call returns a plain JavaScript object called a React element. These elements are immutable and form a tree structure, representing the UI components and their hierarchy. [^1]
+
+The Babel website offer a tools to demonstrate the transpilation results.
+https://babeljs.io/repl
+![bable try it out](/posts/understanding-the-virtual-dom-in-react/babel-try-it-out.png)
+
+
+
+## [Components](#components)
+
+A React component is essentially a function that returns React elements. For example:
+```
+function App() {
+  const [count, setCount] = useState(0);
+  const handleClick = () => {
+    setCount(count + 1);
+  };
+
+  return (
+    <div className="counter">
+      <h2>Count: {count}</h2>
+      <button onClick={handleClick}>Increment</button>
+    </div>
+  );
+}
+```
+This component returns a structure of React elements, which can be visualized as:
+```
+{
+  type: 'div',
+  props: {
+    className: 'counter',
+    children: [
+      {
+        type: 'h2',
+        props: {
+          children: [
+            'Count: ',
+            count
+          ]
+        },
+        key: null,
+        ref: null
+      },
+      {
+        type: 'button',
+        props: {
+          onClick: handleClick,
+          children: 'Increment'
+        },
+        key: null,
+        ref: null
+      }
+    ]
+  },
+  key: null,
+  ref: null
+}
+```
+
+## [Virtual DOM and Fiber nodes tree](#virtual-dom-and-fiber-nodes-tree)
+When React renders the UI, it first invokes the component functions and traverses the returned React elements. This process continues recursively until React reaches scalar values (which are rendered as text nodes) or encounters null or undefined values (which render nothing). This process transforms JSX code into a tree of React elements, traditionally known as the 'virtual DOM'.
+
+However, React elements are just plain JavaScript objects (POJOs) and don't directly help render a web page. The term "virtual DOM" can be misleading and is no longer used in the React official documentation.
+
+Starting with React 16, a new fiber reconciler was introduced, which creates a corresponding fiber node for each React element. This fiber node facilitates a more efficient reconciliation process. If we think of the Virtual DOM in this context, it should be understood as a **tree of fiber nodes**.
+
+
+Operations on the Virtual DOM are faster and more efficient than operations on the real DOM. Multiple Virtual DOM updates are batched into a single DOM update to minimize the number of real DOM manipulations.
+
+
+## [Fiber nodes tree](#fiber-nodes-tree)
+Each fiber node is connected to others using properties such as child, sibling, and return. This linked list structure facilitates React's operations.
+Each first child has a link to its parent, and all other children link to their previous sibling, but also to the parent.
+Below is an illustration of how the fiber tree is structured:
+```
+export function App() {
+  const myApp = (
+    <>
+      <h2>My App</h2>
+      <Counter></Counter>
+      <div>My App Content</div>
+      <h2>My App footer</h2>
+    </>
+  );
+  return myApp;
+}
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    setCount(count => count + 1);
+  };
+
+  return (
+    <>
+      <button onClick={handleClick}>Update Counter</button>
+      <span>The count {count}</span>
+     </>
+  );
+}
+```
+![Fiber tree](/posts/understanding-the-virtual-dom-in-react/fiber-tree.png)
+
+
+## [Real-Life Analogy](#real-life-analogy)
+A useful analogy for the Virtual DOM is the blueprint of a house. Consider a scenario where you want to renovate a room in your house. The physical arrangement of the room—its furniture and decor—parallels the real DOM. The Virtual DOM can be thought of as the blueprint of the entire house. To renovate, you create a revised (**work-in-progress**) blueprint marking changes like adding a window or rearranging walls. You then compare the revised blueprint with the original to identify necessary changes, and finally, apply all modifications to the room at once.\
+The advantage of this approach is the ability to cancel, restart, pause, resume, prioritize, and batch updates for optimal execution. Direct modifications to the real room, if interrupted, would result in visible partial results.
+
+
+
+## [Conclusion](#conclusion)
+The Virtual DOM is not just a technical innovation; it's a paradigm shift in how we think about rendering web pages. By allowing developers to work with a virtual representation of the real UI, React provides a powerful tool for building dynamic and responsive applications efficiently.
+
+
+[^1]: Before React 17, JSX elements were converted into `React.createElement()` during the build process. Starting with React 17, they utilize `_jsx()` and `_jsxs()`. Because JSX was compiled into React.createElement, React needed to be in scope when using JSX.\
+`_jsx()` is a new entry point to the React package, allowing React to be excluded from the scope, leading to performance improvements and simplifications.\
+`_jsxs()` is used for fragments (multiple adjacent elements).
+
