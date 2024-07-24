@@ -1,16 +1,17 @@
 import 'css/tailwind.css'
 import 'pliny/search/algolia.css'
 import 'remark-github-blockquote-alert/alert.css'
-
-import { Space_Grotesk } from 'next/font/google'
-import { Analytics, AnalyticsConfig } from 'pliny/analytics'
-import { SearchProvider, SearchConfig } from 'pliny/search'
+import Footer from '@/components/Footer'
 import Header from '@/components/Header'
 import SectionContainer from '@/components/SectionContainer'
-import Footer from '@/components/Footer'
 import siteMetadata from '@/data/siteMetadata'
-import { ThemeProviders } from './theme-providers'
 import { Metadata } from 'next'
+
+import { Space_Grotesk } from 'next/font/google'
+import Script from 'next/script'
+import { Analytics, AnalyticsConfig } from 'pliny/analytics'
+import { SearchConfig, SearchProvider } from 'pliny/search'
+import { ThemeProviders } from './theme-providers'
 
 const space_grotesk = Space_Grotesk({
   subsets: ['latin'],
@@ -56,6 +57,25 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     images: [siteMetadata.socialBanner],
   },
+}
+
+function TrackingCode() {
+  return (
+    <>
+      <Script type="text/javascript" id="statecounter">
+        {`
+        var sc_project=13021128;
+        var sc_invisible=1;
+        var sc_security='5353ecbb';
+        `}
+      </Script>
+      <Script
+        type="text/javascript"
+        src="https://www.statcounter.com/counter/counter.js"
+        async
+      ></Script>
+    </>
+  )
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -107,6 +127,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </SectionContainer>
         </ThemeProviders>
+        <TrackingCode />
       </body>
     </html>
   )

@@ -4,12 +4,12 @@ date: '2024-01-02'
 lastmod: '2024-01-02'
 tags: ['react-js', 'deep-dive']
 draft: false
-summary: 'In React, event handling is a bit different from traditional DOM manipulation. React wraps events in synthetic events, which provide a consistent interface across different browsers.'
+summary: 'In React, events are encapsulated within synthetic events, and instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.'
 images: []
 ---
 
 ## Introduction
-In React, event handling is a bit different from traditional DOM manipulation. React wraps events in synthetic events, which provide a consistent interface across different browsers. This means you don't have to worry about cross-browser compatibility issues when working with events in React.
+In React, event handling differs from traditional DOM event listening. Events are encapsulated within synthetic events that provide an interface consistent with native events, but they normalize behaviors across different browsers. Instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.
 
 - [What is Event Delegation?](#event-delegation)
 - [How Event Delegation Works](#how-event-delegation-works)
