@@ -1,0 +1,92 @@
+---
+title: 'Event Handling in React'
+date: '2024-01-02'
+lastmod: '2024-01-02'
+tags: ['react-js', 'deep-dive']
+draft: false
+summary: 'In React, event handling is a bit different from traditional DOM manipulation. React wraps events in synthetic events, which provide a consistent interface across different browsers.'
+images: []
+---
+
+## Introduction
+In React, event handling is a bit different from traditional DOM manipulation. React wraps events in synthetic events, which provide a consistent interface across different browsers. This means you don't have to worry about cross-browser compatibility issues when working with events in React.
+
+- [What is Event Delegation?](#event-delegation)
+- [How Event Delegation Works](#how-event-delegation-works)
+- [Event Phases](#event-phases)
+- [Triggering Events in React](#triggering-events-in-react)
+
+
+## [What is Event Delegation?](#event-delegation)
+Event delegation is a technique where a single event listener is attached to a parent element to manage all events for child elements. Instead of attaching individual event handlers to each element, React attaches a single event listener to the root element. This improves performance, especially when dealing with a large number of elements.
+
+Here's an example to illustrate:
+```
+export function App() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    setCount((prevCount) => prevCount + 1);
+  }
+
+  return (
+    <>
+      <h1>Count: {count}</h1>
+      <button onClick={handleClick}>Increment</button>
+    </>
+  );
+}
+```
+
+In the above example, React registers an event handler for the "click" event on the root element during the capture phase. The actual click event handler for the button element is an empty function `noop()`
+![button click listener](/static/images/posts/event-handling-in-react/button-click-listener.png)
+![root event listener](/static/images/posts/event-handling-in-react/root-event-listener.png)
+
+
+## [How Event Delegation Works](#how-event-delegation-works)
+Event delegation involves handling events during the capture phase by a parent element. This method reduces memory usage and setup time for event listeners, providing enhanced performance.\
+In React, events are processed during the capture phase, so calling `e.nativeEvent.stopPropagation()` in an event handler won't prevent React from handling the events.\
+And calling `e.stopPropagation()` will only stop the propagation of synthetic events.
+
+
+
+## [Event Phases](#event-phases)
+Events propagate along a path from the root to the target node. This process is divided into three phases:
+
+1. Capture Phase: The event is dispatched from the root node to the direct parent of the target node. You can use the third argument of addEventListener to control whether to trigger the event during the capture phase.
+2. Target Phase: The event is dispatched to the target node.
+3. Bubbling Phase: The event propagates from the target's direct parent node back up to the root. Most events bubble, with the notable exception of the focus event, which does not.
+
+![root event listener](/static/images/posts/event-handling-in-react/event-bubble-capture.png)
+(source: https://www.w3.org/TR/2003/NOTE-DOM-Level-3-Events-20031107/events.html#Events-phases)
+
+
+When registering an event listener, you can use the options parameter to control the behavior of the event:
+
+- Boolean Value: If true, the event will be triggered during the capture phase; if false, during the bubbling phase.
+ - Object:
+```
+{
+  capture: true, // Same as boolean value
+  once: true, // The event listener should be invoked at most once and removed after it is triggered
+  passive: true // The event listener will not cancel the event; this improves responsiveness, especially on mobile devices
+}
+```
+If you set passive to true, calling `e.preventDefault()` within that event listener will be ignored, and the default action will not be prevented. This allows the browser to proceed with the default action immediately, which can enhance the responsiveness of certain actions, particularly on mobile devices where touch and scroll events are frequent.
+
+
+
+## [Triggering Events in React](#triggering-events-in-react)
+React registers `dispatchDiscreteEvent()` during the capture phase. When you click the "Increment" button, this function is triggered and does the following:
+
+
+1. Invokes `extractEvents()` to extract the click function from the fiber node corresponding to the button element. The click function is then placed in a DispatchQueue.
+![dispatchEventForPlugins()](/static/images/posts/event-handling-in-react/dispatch-event-for-plugins.png)
+
+2. Processes the DispatchQueue and finally executes the click function.
+![callCallback()](/static/images/posts/event-handling-in-react/call-callback.png)
+
+3. Invokes `ensureRootIsScheduled()` to schedule an update. The React scheduler will then re-render the UI.
+![ensureRootIsScheduled()](/static/images/posts/event-handling-in-react/ensure-root-is-scheduled.png)
+
+By understanding and utilizing these concepts, you can efficiently handle events in your React applications, leading to better performance and more maintainable code.
