@@ -21,11 +21,12 @@ The Document Object Model (DOM) is a programming interface for HTML and XML docu
 
 
 ## [React Elements](#react-elements)
-In React, the HTML-like syntax, known as JSX, is a syntactic sugar that gets transpiled into `React.createElement()` or `_jsx()` during the build process using tools like Babel. Each `React.createElement()` call returns a plain JavaScript object called a React element. These elements are immutable and form a tree structure, representing the UI components and their hierarchy. [^1]
+In React, the HTML-like syntax, known as JSX, is a syntactic sugar that gets transpiled into `React.createElement()` or `_jsx()` during the build process using tools like Babel. [^1]\
+Each `React.createElement()` call returns a plain JavaScript object called a React element. These elements are immutable and form a tree structure, representing the UI components and their hierarchy.
 
 The Babel website offer a tools to demonstrate the transpilation results.
 https://babeljs.io/repl
-![bable try it out](/posts/understanding-the-virtual-dom-in-react/babel-try-it-out.png)
+![bable try it out](/static/images/posts/understanding-the-virtual-dom-in-react/babel-try-it-out.png)
 
 
 
@@ -124,7 +125,7 @@ export default function Counter() {
   );
 }
 ```
-![Fiber tree](/posts/understanding-the-virtual-dom-in-react/fiber-tree.png)
+![Fiber tree](/static/images/posts/understanding-the-virtual-dom-in-react/fiber-tree.png)
 
 
 ## [Real-Life Analogy](#real-life-analogy)

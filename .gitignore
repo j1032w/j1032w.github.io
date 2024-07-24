@@ -58,4 +58,4 @@ yarn-error.log*
 .settings/
 *.sublime-workspace
 /*.lnk
-
+/*.bat
