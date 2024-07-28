@@ -92,8 +92,6 @@ Subsequently, when `setState()` is executed, it invokes `scheduleUpdateOnFiber()
 ![call-callback](/static/images/posts/event-handling-in-react18/call-callback.png)
 
 
-Notably, `dispatchDiscreteEvent()` is triggered twice because React registers both capture and bubble phases for the click event.
-
 The call graph illustrates as below:
 ![event dispatch call graph](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph.png)
 ![event dispatch call graph2](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph2.png)
