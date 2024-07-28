@@ -13,7 +13,7 @@ In React, event handling differs from traditional DOM event listening. Events ar
 
 - [Event Delegation](#event-delegation)
 - [Synthetic Events](#synthetic-events)
-- [Listener Registration](#listener-registration)
+- [Event Priority](#event-priority)
 - [Event Dispatch](#event-dispatch)
 - [Conclusion](#conclusion)
 - [Aside: What is Event Phases](#aside-what-is-event-phases)
@@ -58,11 +58,8 @@ And calling `e.stopPropagation()` will stop only the propagation of synthetic ev
 ![synthetic event](/static/images/posts/event-handling-in-react18/synthetic-event.png)
 
 
-## [Listener Registration](#listener-registration)
-ReactDOM.createRoot() method not only creates the root container but also registers three types of event listeners on the root element, each processed at a different priority.\
-After executing the event and scheduling the update, the event priority is used to determine the update lane. This update lane is then passed to `scheduleUpdateOnFiber()` along with the scheduled update.
-![dispatch event priority](/static/images/posts/event-handling-in-react18/dispatch-event-priority.png)
-
+## [Event Priority](#event-priority)
+`ReactDOM.createRoot()` method not only creates the root container but also registers three types of event listeners on the root element, each processed at a different priority.\
 The three types of event listeners are:
 
 1. `dispatchDiscreteEvent()`: Handles high-priority events such as mouse clicks, keyboard presses, and touch inputs, ensuring a responsive user interface.
@@ -72,6 +69,12 @@ The three types of event listeners are:
 You may refer to the event priority definitions in the React source code: ReactDOMEventListener.js
 https://github.com/facebook/react/blob/v18.3.1/packages/react-dom/src/events/ReactDOMEventListener.js#L411
 
+
+
+When the event listener is triggered, React calculates the 'update lane' based on the event's priority, and creates an update object. This object and the corresponding fiber are then passed to `enqueueConcurrentHookUpdate()` to mark the fiber for updating, followed by a call to `scheduleUpdateOnFiber()` to schedule the update .
+
+![dispatch-set-update](/static/images/posts/event-handling-in-react18/dispatch-set-update.png)
+![request update lane](/static/images/posts/event-handling-in-react18/request-update-lane.png)
 
 
 
