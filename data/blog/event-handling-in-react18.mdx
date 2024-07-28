@@ -1,0 +1,129 @@
+---
+title: 'Event Handling in React 18'
+date: '2024-01-02'
+lastmod: '2024-01-02'
+tags: ['react-js', 'in-depth']
+draft: false
+summary: 'In React, events are encapsulated within synthetic events, and instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.'
+images: []
+---
+
+## Introduction
+In React, event handling differs from traditional DOM event listening. Events are encapsulated within synthetic events that provide an interface consistent with native events, but they normalize behaviors across different browsers. Instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.
+
+- [Event Delegation](#event-delegation)
+- [Synthetic Events](#synthetic-events)
+- [Listener Registration](#listener-registration)
+- [Event Dispatch](#event-dispatch)
+- [Conclusion](#conclusion)
+- [Aside: What is Event Phases](#aside-what-is-event-phases)
+
+
+
+## [Event Delegation](#event-delegation)
+React utilizes a technique known as event delegation to handle events efficiently. This approach involves attaching a single event listener to the root HTML element, rather than multiple listeners spread across various components. This centralized event management system significantly reduces the overhead associated with attaching and detaching event listeners directly to DOM elements, especially in large applications.
+
+
+Here's an example to illustrate:
+```
+export function App() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    setCount((prevCount) => prevCount + 1);
+  }
+
+  return (
+    <>
+      <h1>Count: {count}</h1>
+      <button onClick={handleClick}>Increment</button>
+    </>
+  );
+}
+```
+
+When React creates the root container using `ReactDOM.createRoot()`, it attaches event listeners to the root HTML element for all supported events and both [event capture and bubble phases](#aside-what-is-event-phases).
+![root event listener](/static/images/posts/event-handling-in-react18/root-event-listener.png)
+![root event listener](/static/images/posts/event-handling-in-react18/root-event-listener2.png)
+
+The call graph of listener registration illustrates as below:
+![event registration call graph](/static/images/posts/event-handling-in-react18/event-registration-call-graph.png)
+
+
+
+## [Synthetic Events](#synthetic-events)
+React abstracts the browser's native events into synthetic events, normalizing them for consistent behavior across different browsers. Unlike native event handlers, the event handler specified in a React component is not directly attached to the HTML element. Instead, an empty function (`noop()`) is attached. \
+Consequently, calling `e.nativeEvent.stopPropagation()` within an event handler will not prevent event bubbling, nor calling `e.preventDefault()` or returning `false`. \
+And calling `e.stopPropagation()` will stop only the propagation of synthetic events within the React event system.
+![synthetic event](/static/images/posts/event-handling-in-react18/synthetic-event.png)
+
+
+## [Listener Registration](#listener-registration)
+ReactDOM.createRoot() method not only creates the root container but also registers three types of event listeners on the root element, each processed at a different priority.\
+After executing the event and scheduling the update, the event priority is used to determine the update lane. This update lane is then passed to `scheduleUpdateOnFiber()` along with the scheduled update.
+![dispatch event priority](/static/images/posts/event-handling-in-react18/dispatch-event-priority.png)
+
+The three types of event listeners are:
+
+1. `dispatchDiscreteEvent()`: Handles high-priority events such as mouse clicks, keyboard presses, and touch inputs, ensuring a responsive user interface.
+2. `dispatchContinuousEvent()`: Manages events like mouse movement, scrolling, and dragging, which occur frequently and do not require immediate processing.
+3. `dispatchEvent()`: Handles normal priority events, such as "canplay," "audio," and "error."
+
+You may refer to the event priority definitions in the React source code: ReactDOMEventListener.js
+https://github.com/facebook/react/blob/v18.3.1/packages/react-dom/src/events/ReactDOMEventListener.js#L411
+
+
+
+
+
+## [Event Dispatch](#event-dispatch)
+When the button is clicked in the above example, `dispatchDiscreteEvent()` is triggered on the root HTML element, and then `dispatchEventsForPlugins()` is called, which performs the following steps:
+
+1. Invokes `getEventTarget()` to retrieve the original clicked HTML element.
+2. Creates a new `dispatchQueue` for multiple registered listeners.
+3. Invokes `extractEvents()` to create a new SyntheticEvent and pushes it to the `dispatchQueue`.
+4. Invokes `processDispatchQueue()` to execute the specified event listener.
+
+Subsequently, when `setState()` is executed, it invokes `scheduleUpdateOnFiber()` to add the update to the scheduler. The React scheduler then handles the re-rendering process.
+
+
+
+![dispatch-event-for-plugins](/static/images/posts/event-handling-in-react18/dispatch-event-for-plugins.png)
+![call-callback](/static/images/posts/event-handling-in-react18/call-callback.png)
+
+
+Notably, `dispatchDiscreteEvent()` is triggered twice because React registers both capture and bubble phases for the click event.
+
+The call graph illustrates as below:
+![event dispatch call graph](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph.png)
+![event dispatch call graph2](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph2.png)
+
+
+## [Conclusion](#conclusion)
+By leveraging event delegation, synthetic events, and a sophisticated event handling process, React efficiently manages events, prioritizing critical updates and maintaining a responsive interface.
+
+
+## [Aside: What is Event Phases](#what-is-event-phases)
+Events propagate along a path from the root to the target node. This process is divided into three phases:
+
+1. Capture Phase: The event is dispatched from the root node to the direct parent of the target node. You can use the third argument of addEventListener to control whether to trigger the event during the capture phase.
+2. Target Phase: The event is dispatched to the target node.
+3. Bubbling Phase: The event propagates from the target's direct parent node back up to the root. Most events bubble, with the notable exception of the focus event, which does not.
+
+![root event listener](/static/images/posts/event-handling-in-react18/event-bubble-capture.png)
+(source: https://www.w3.org/TR/2003/NOTE-DOM-Level-3-Events-20031107/events.html#Events-phases)
+
+
+When registering an event listener, you can use the options parameter to control the behavior of the event:
+
+- Boolean Value: If true, the event will be triggered during the capture phase; if false, during the bubbling phase.
+ - Object:
+```
+{
+  capture: true, // Same as boolean value
+  once: true, // The event listener should be invoked at most once and removed after it is triggered
+  passive: true // The event listener will not cancel the event; this improves responsiveness, especially on mobile devices
+}
+```
+If you set passive to true, calling `e.preventDefault()` within that event listener will be ignored, and the default action will not be prevented. This allows the browser to proceed with the default action immediately, which can enhance the responsiveness of certain actions, particularly on mobile devices where touch and scroll events are frequent.
+
