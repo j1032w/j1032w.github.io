@@ -1,5 +1,5 @@
 ---
-title: 'Understanding the Virtual DOM in React'
+title: 'Understanding the Virtual DOM and Fiber Tree in React'
 date: '2023-07-01'
 lastmod: '2023-07-01'
 tags: ['react-js']
@@ -11,16 +11,17 @@ images: []
 ## Introduction
 The Document Object Model (DOM) is a programming interface for HTML and XML documents, but direct manipulation of the DOM can be slow and inefficient. This is where the Virtual DOM comes into play.
 
-- [React Elements](#react-elements)
-- [Components](#components)
-- [Virtual DOM and Fiber nodes tree](#virtual-dom-and-fiber-nodes-tree)
-- [Fiber nodes tree](#fiber-nodes-tree)
+- [createElement( )](#createelement)
+- [React Element](#react-element)
+- [Virtual DOM](#virtual-dom)
+- [Fiber Nodes Tree](#fiber-nodes-tree)
+- [Depth-First Traversal](#depth-first-traversal)
 - [Real-Life Analogy](#real-life-analogy)
 - [Conclusion](#conclusion)
 
 
 
-## [React Elements](#react-elements)
+## [createElement( )](#createelement)
 In React, the HTML-like syntax, known as JSX, is a syntactic sugar that gets transpiled into `React.createElement()` or `_jsx()` during the build process using tools like Babel. [^1]\
 Each `React.createElement()` call returns a plain JavaScript object called a React element. These elements are immutable and form a tree structure, representing the UI components and their hierarchy.
 
@@ -30,7 +31,7 @@ https://babeljs.io/repl
 
 
 
-## [Components](#components)
+## [React Element](#react-element)
 
 A React component is essentially a function that returns React elements. For example:
 ```
@@ -82,7 +83,7 @@ This component returns a structure of React elements, which can be visualized as
 }
 ```
 
-## [Virtual DOM and Fiber nodes tree](#virtual-dom-and-fiber-nodes-tree)
+## [Virtual DOM](#virtual-dom)
 When React renders the UI, it first invokes the component functions and traverses the returned React elements. This process continues recursively until React reaches scalar values (which are rendered as text nodes) or encounters null or undefined values (which render nothing). This process transforms JSX code into a tree of React elements, traditionally known as the 'virtual DOM'.
 
 However, React elements are just plain JavaScript objects (POJOs) and don't directly help render a web page. The term "virtual DOM" can be misleading and is no longer used in the React official documentation.
@@ -93,7 +94,7 @@ Starting with React 16, a new fiber reconciler was introduced, which creates a c
 Operations on the Virtual DOM are faster and more efficient than operations on the real DOM. Multiple Virtual DOM updates are batched into a single DOM update to minimize the number of real DOM manipulations.
 
 
-## [Fiber nodes tree](#fiber-nodes-tree)
+## [Fiber Nodes Tree](#fiber-nodes-tree)
 Each fiber node is connected to others using properties such as child, sibling, and return. This linked list structure facilitates React's operations.
 Each first child has a link to its parent, and all other children link to their previous sibling, but also to the parent.
 Below is an illustration of how the fiber tree is structured:
@@ -125,7 +126,53 @@ export default function Counter() {
   );
 }
 ```
-![Fiber tree](/static/images/posts/understanding-the-virtual-dom-in-react/fiber-tree.png)
+![Fiber Tree](/static/images/posts/understanding-the-virtual-dom-in-react/fiber-tree.png)
+
+
+## [Depth-First Traversal](#depth-first-traversal)
+
+The fiber tree uses this linked list structure for several reasons:
+
+-	Efficient depth-first traversal\
+The linked list pointers (`child`, `sibling`, `return`) make it easy to navigate the tree.\
+Here's an example of how depth-first traversal can be achieved:
+```
+function performWork(fiber) {
+  while(fiber) {
+    // Process the current fiber node
+    console.log(fiber.element);
+
+    // Check if we need to pause
+    if(shouldPauseWork()) {
+      saveState(fiber);
+      return; // Exit the function to pause
+    }
+
+    // Traverse to the child first
+    if(fiber.child) {
+      fiber = fiber.child;
+    } else {
+      // If no child, move to sibling
+      while(!fiber.sibling && fiber.return) {
+        fiber = fiber.return; // Move up the tree
+      }
+      fiber = fiber.sibling; // Move to the next sibling
+    }
+  }
+}
+```
+
+
+-	Asynchronous rendering\
+The linked list structure allows React to support pause and resume rendering, and handle higher-priority updates first. React breaks down the work into small chunks, or time slices, that can be completed within a single frame, approximately 16ms for a 60Hz monitor.\
+During traversal, if React decides to pause the work, it saves the state of the traversal (current node, remaining work) so that it can resume from the same point later.
+
+
+-	Efficiently update fiber nodes\
+o	Adding a new child using the `child` pointer.\
+o	Re-order or adding new sibling at the same level using the `sibling` pointer.\
+o	Move back up to the parent using the `return` pointer.
+
 
 
 ## [Real-Life Analogy](#real-life-analogy)

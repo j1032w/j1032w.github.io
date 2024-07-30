@@ -87,6 +87,8 @@ When the button is clicked in the above example, `dispatchDiscreteEvent()` is tr
 3. Invokes `extractEvents()` to create a new SyntheticEvent and pushes it to the `dispatchQueue`.
 4. Invokes `processDispatchQueue()` to execute the specified event listener.
 
+![synthetic-event=object](/static/images/posts/event-handling-in-react18/synthetic-event=object.png)
+
 Subsequently, when `setState()` is executed, it invokes `scheduleUpdateOnFiber()` to add the update to the scheduler. The React scheduler then handles the re-rendering process.
 
 
