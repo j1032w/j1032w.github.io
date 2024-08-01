@@ -95,7 +95,7 @@ Operations on the Virtual DOM are faster and more efficient than operations on t
 
 
 ## [Fiber Nodes Tree](#fiber-nodes-tree)
-Each fiber node is connected to others using properties such as child, sibling, and return. This linked list structure facilitates React's operations.
+Each fiber node is connected to others using properties `child`, `sibling`, and `return`. This linked list structure facilitates React's operations.
 Each first child has a link to its parent, and all other children link to their previous sibling, but also to the parent.
 Below is an illustration of how the fiber tree is structured:
 ```

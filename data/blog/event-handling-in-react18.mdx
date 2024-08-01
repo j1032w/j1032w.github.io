@@ -13,8 +13,8 @@ In React, event handling differs from traditional DOM event listening. Events ar
 
 - [Event Delegation](#event-delegation)
 - [Synthetic Events](#synthetic-events)
-- [Event Priority](#event-priority)
 - [Event Dispatch](#event-dispatch)
+- [Event Priority](#event-priority)
 - [Conclusion](#conclusion)
 - [Aside: What is Event Phases](#aside-what-is-event-phases)
 
@@ -58,6 +58,32 @@ And calling `e.stopPropagation()` will stop only the propagation of synthetic ev
 ![synthetic event](/static/images/posts/event-handling-in-react18/synthetic-event.png)
 
 
+
+
+## [Event Dispatch](#event-dispatch)
+When the button is clicked in the example above, the "click" event is captured by the root HTML element, which then executes the `dispatchDiscreteEvent()` function. The native event is passed to `dispatchDiscreteEvent()` as an argument, including the clicked HTML button element. \
+React attaches a fiber node reference to the corresponding HTML element as `__reactFiber$ + randomKey`. This allows React to obtain the fiber node associated with the event and link the click event to the fiber node.
+
+![react-fiber-random-key](/static/images/posts/event-handling-in-react18/react-fiber-random-key.png)
+
+
+
+In detail, `dispatchDiscreteEvent()` calls `dispatchEventsForPlugins()`, which performs the following steps:
+1. Invokes `getEventTarget()` to retrieve the original clicked HTML element.
+2. Creates a new `dispatchQueue` as there might be multiple registered listeners.
+3. Invokes `extractEvents()` to create a new SyntheticEvent and pushes it to the `dispatchQueue`.
+4. Invokes `processDispatchQueue()` to execute the specified event listener.
+
+![dispatch-event-for-plugins](/static/images/posts/event-handling-in-react18/dispatch-event-for-plugins.png)
+![synthetic-event-object](/static/images/posts/event-handling-in-react18/synthetic-event-object.png)
+![call-callback](/static/images/posts/event-handling-in-react18/call-callback.png)
+
+
+The call graph illustrates as below:
+![event dispatch call graph](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph.png)
+
+
+
 ## [Event Priority](#event-priority)
 `ReactDOM.createRoot()` method not only creates the root container but also registers three types of event listeners on the root element, each processed at a different priority.\
 The three types of event listeners are:
@@ -66,40 +92,19 @@ The three types of event listeners are:
 2. `dispatchContinuousEvent()`: Manages events like mouse movement, scrolling, and dragging, which occur frequently and do not require immediate processing.
 3. `dispatchEvent()`: Handles normal priority events, such as "canplay," "audio," and "error."
 
-You may refer to the event priority definitions in the React source code: ReactDOMEventListener.js
+You may refer to the event priority definitions in the React source code: [ReactDOMEventListener.js](https://github.com/facebook/react/blob/v18.3.1/packages/react-dom/src/events/ReactDOMEventListener.js#L411)
 https://github.com/facebook/react/blob/v18.3.1/packages/react-dom/src/events/ReactDOMEventListener.js#L411
 
 
-
-When the event listener is triggered, React calculates the 'update lane' based on the event's priority, and creates an update object. This object and the corresponding fiber are then passed to `enqueueConcurrentHookUpdate()` to mark the fiber for updating, followed by a call to `scheduleUpdateOnFiber()` to schedule the update .
+When an event listener includes a state change, a new re-render needs to be scheduled. React calculates the **update lane** based on the event's priority, then passes the update lane to `enqueueConcurrentHookUpdate()` to mark the fiber for updating, followed by a call to `scheduleUpdateOnFiber()` to schedule the update.
 
 ![dispatch-set-update](/static/images/posts/event-handling-in-react18/dispatch-set-update.png)
 ![request update lane](/static/images/posts/event-handling-in-react18/request-update-lane.png)
 
 
 
-
-## [Event Dispatch](#event-dispatch)
-When the button is clicked in the above example, `dispatchDiscreteEvent()` is triggered on the root HTML element, and then `dispatchEventsForPlugins()` is called, which performs the following steps:
-
-1. Invokes `getEventTarget()` to retrieve the original clicked HTML element.
-2. Creates a new `dispatchQueue` for multiple registered listeners.
-3. Invokes `extractEvents()` to create a new SyntheticEvent and pushes it to the `dispatchQueue`.
-4. Invokes `processDispatchQueue()` to execute the specified event listener.
-
-![synthetic-event=object](/static/images/posts/event-handling-in-react18/synthetic-event=object.png)
-
-Subsequently, when `setState()` is executed, it invokes `scheduleUpdateOnFiber()` to add the update to the scheduler. The React scheduler then handles the re-rendering process.
-
-
-
-![dispatch-event-for-plugins](/static/images/posts/event-handling-in-react18/dispatch-event-for-plugins.png)
-![call-callback](/static/images/posts/event-handling-in-react18/call-callback.png)
-
-
 The call graph illustrates as below:
-![event dispatch call graph](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph.png)
-![event dispatch call graph2](/static/images/posts/event-handling-in-react18/event-dispatch-call-graph2.png)
+![re-render](/static/images/posts/event-handling-in-react18/re-render.png)
 
 
 ## [Conclusion](#conclusion)
