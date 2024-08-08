@@ -61,7 +61,7 @@ And calling `e.stopPropagation()` will stop only the propagation of synthetic ev
 
 
 ## [Event Dispatch](#event-dispatch)
-When the button is clicked in the example above, the "click" event is captured by the root HTML element, which then executes the `dispatchDiscreteEvent()` function. The native event is passed to `dispatchDiscreteEvent()` as an argument, including a reference to the clicked HTML button element. React attaches a fiber node reference of the host component to the corresponding HTML element as `__reactFiber$ + randomKey`. The host component refers to components that correspond to actual DOM elements like <div>, <span>, <button>, etc.
+When the button is clicked in the example above, the "click" event is captured by the root HTML element, which then executes the `dispatchDiscreteEvent()` function. The native event is passed to `dispatchDiscreteEvent()` as an argument, including a reference to the clicked HTML button element. React attaches a fiber node reference of the host component to the corresponding HTML element as `__reactFiber$ + randomKey`. The host component refers to components that correspond to actual DOM elements like div, span, button, etc.
 
 ![react-fiber-random-key](/static/images/posts/event-handling-in-react18/react-fiber-random-key.png)
 
