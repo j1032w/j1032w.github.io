@@ -1,0 +1,108 @@
+---
+title: 'Concurrent Rendering and Update Priority in React 18'
+date: '2024-08-11'
+lastmod: '2024-08-11'
+tags: ['react-js', 'in-depth']
+draft: false
+summary: 'In React, events are encapsulated within synthetic events, and instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.'
+images: []
+---
+
+## Introduction
+React has evolved over the years, and one of the significant advancements is the introduction of Concurrent Mode. This mode allows React to break free from the constraints of synchronous rendering, enabling more flexible and responsive user interfaces. Concurrent Mode brings along a sophisticated update priority system, which ensures that the most crucial updates are handled promptly while less critical updates can be deferred.\
+In this blog, we’ll delve into the technical intricacies of Concurrent Mode in React, particularly focusing on how updates are triggered, scheduled, and prioritized.
+
+- [Update Lanes and Bitwise Opertions](#lanes-and-the-priority-system)
+- [Real-Life Analogy](#real-life-analogy)
+
+
+The call graph of prioritized updates illustrates as below:
+![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
+
+![schedule-task-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/schedule-task-call-graph.png)
+
+
+
+
+
+## [Update Lanes and Bitwise Opertions](#lanes-and-the-priority-system)
+React uses a concept called “lanes” to prioritize and manage updates. Each update is assigned to a lane based on its urgency and type. React defines 31 lanes in the binary form. With multiple lanes merged into a single binary number, each bit in the binary number can represent a different priority level. This system allows React to represent multiple priority levels in a single number, making it easy to manage and schedule updates using bitwise operations.
+
+React categorizes the 31 lanes into 7 groups, with priority levels arranged from high to low:\
+**SyncLanes > InputContinuousLanes > DefaultLanes > TransitionLanes > RetryLanes > IdleLanes > OffScreenLanes**
+
+
+The lanes definition can be found in the following file:\
+ReactFiberLane.new.js https://github.com/facebook/react/blob/v18.3.1/packages/react-reconciler/src/ReactFiberLane.new.js#L34
+
+```
+export const TotalLanes = 31;
+
+export const NoLanes: Lanes = /*                        */ 0b0000000000000000000000000000000;
+export const NoLane: Lane = /*                          */ 0b0000000000000000000000000000000;
+
+export const SyncLane: Lane = /*                        */ 0b0000000000000000000000000000001;
+
+export const InputContinuousHydrationLane: Lane = /*    */ 0b0000000000000000000000000000010;
+export const InputContinuousLane: Lane = /*             */ 0b0000000000000000000000000000100;
+
+export const DefaultHydrationLane: Lane = /*            */ 0b0000000000000000000000000001000;
+export const DefaultLane: Lane = /*                     */ 0b0000000000000000000000000010000;
+
+const TransitionHydrationLane: Lane = /*                */ 0b0000000000000000000000000100000;
+const TransitionLanes: Lanes = /*                       */ 0b0000000001111111111111111000000;
+const TransitionLane1: Lane = /*                        */ 0b0000000000000000000000001000000;
+
+```
+
+Because the update lanes are represented in binary form, React can use bitwise operations to manipulate lanes and determine the priority of updates efficiently.
+
+For instance, to find the highest priority lane, we may perform a bitwise AND operation between lanes and (Not lanes).
+```
+var lanes = 0b01011000;
+~lanes; // 0b10101000
+lanes & ~lanes ; // 0b00001000
+```
+
+
+To merge lanes, we may perform bitwise OR operation, for example:
+```
+var pendingLanes = 0b0101;
+var updateLane = 0b0011;
+pendingLanes |= updateLane; // 0b0111
+```
+
+
+
+
+## [How useState Works Internally](#how-usestate-works-internally)
+The `useState()` hook in React is fundamental for managing state in function components. Internally, it initializes state by invoking `mountState()`, which returns a memoized state variable and a bound version of the `dispatchSetState()` function.
+
+![mount-state](/static/images/posts/concurrent-mode-and-update-priority-in-react18/mount-state.png)
+
+
+The `mounteState()` internally creates a hook linked list which represent all hooks used in the component. It is stored as memoizedState in the corresponding fiber, allowing React to maintain the state across renders.
+![memoized-state](/static/images/posts/concurrent-mode-and-update-priority-in-react18/memoized-state.png)
+
+
+Note, there 2 different `memoizedStates` properties. The `fiber.memoizedState` is the hooks linked list, the `hook.memoizedState` is the value of the hook state.\
+The first hook used in a component is stored in the memoizedState property, with subsequent hooks stored in a linked list manner: the second in `memoizedState.next`, the third in memoizedState.next.next, and so forth.
+
+Each fiber node maintains its hooks as a linked list. When hooks are declared within loops or conditional structures, it can disrupt the consistency of hooks between the current fiber and its work-in-progress counterpart during re-renders. This inconsistency impedes the correct synchronization of hook states, that is why hooks should not be declared inside loops or conditional statements.
+
+
+When a setState method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately before entering the render phase. And if the new state is same as the current state, React stops going deeper to skip the re-render of a subtree to avoid scheduling re-render, so early bailout
+
+Otherwise, React creates an update object to represent the update information, such as callback method, update priority, etc, and stores it into the `memoizedState.queue.interleaved`.  The memoizedState.queue.interleaved is a circular linked list, and the `interleaved` points to the tail. The most important reason for this design is to improve performance. In the React execution flow, new update objects need to be frequently added to the end of the list. the last node in the list can be directly accessed as the interleaved node. Finding the first node is also convenient because the next node of the last node is the first node.
+
+
+
+
+
+## [Real-Life Analogy](#real-life-analogy)
+
+Imagine a programmer busy with a task while a large group of people constantly ask questions. Some questions are urgent, some are repetitive, and some are time-consuming. The programmer can't address these issues all at once.
+
+To improve the workflow, a product manager steps in to evaluate the priority of each question, placing them into a demand pool. The programmer sets a timer, and at each interval, checks if more urgent tasks have arisen. If they have, he pauses his current task to address the more urgent ones.
+
+In this analogy, the product manager acts as the React scheduler, while the programmer represents the rendering mechanism. React, however, operates with a much shorter timer, often just 5 milliseconds, ensuring that even during intensive rendering, the user experience remains smooth.
