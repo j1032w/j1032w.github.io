@@ -4,7 +4,7 @@ date: '2024-03-14'
 lastmod: '2024-03-14'
 tags: ['react-js', 'in-depth']
 draft: false
-summary: 'When you call setState(), React doesn''t immediately update the state. Instead, it creates an update object and places it in a queue within the component''s fiber, which is the underlying data structure that React uses to manage and reconcile the component tree.'
+summary: 'When you call `setState()`, React doesn''t immediately update the state. Instead, it creates an update object and places it in a queue within the component''s fiber, which is the underlying data structure that React uses to manage and reconcile the component tree.'
 images: []
 ---
 
@@ -17,12 +17,13 @@ React then schedules the component to re-render by calling `scheduleUpdateOnFibe
 
 - [Introduction](#introduction)
 - [Rules of Hooks](#rules-of-hooks)
-- [1. `resolveDispatcher()` Function](#resolveDispatcher)
-- [2. `mountState()` Function](#mountState)
-- [3. The Interleaved Queue (memoizedState.queue.interleaved)](#interleaved-queue)
-- [4. The Pending Queue (memoizedState.queue.pending)](#pending-queue)
-- [5. updateState](#updateState)
+- [1. The `resolveDispatcher()` Function](#1-the-resolvedispatcher-function)
+- [2. The `mountState()` Function](#2-the-mountstate-function)
+- [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
+- [4. The `pending` Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
+- [5. The `updateState()` Function](#5-the-updatestate-function)
 - [Conclusion](#conclusion)
+
 
 
 The call graph is illustrated as below:
@@ -51,7 +52,7 @@ To optimize performance, React batches multiple setState() calls into a single u
 
 
 
-## [1. `resolveDispatcher()` Function](#resolveDispatcher)
+## [1. The `resolveDispatcher()` Function](#1-the-resolvedispatcher-function)
 Each hook in React has two implementations:
 - mountFoo: Initializes the hook during the component's initial render.
 - updateFoo: Manages updates in subsequent renders.
@@ -102,7 +103,7 @@ https://github.com/facebook/react/blob/v18.3.1/packages/react/src/ReactHooks.js#
 
 
 
-## [2. `mountState()` Function](#mountState)
+## [2. The `mountState()` Function](#2-the-mountstate-function)
 During the initial render of a component, when useState() is called, `resolveDispatcher()` returns the `mountState()` method. `mountState()` internally invokes `mountWorkInProgressHook()`, which creates a hook object stored as `memoizedState` in the corresponding fiber. This allows React to maintain the state across renders.
 
 The first hook used in a function component is stored in the `memoizedState` property of the fiber. Subsequent hooks are stored in a linked-list manner, where the second is stored in `memoizedState.next`, the third in `memoizedState.next.next`, and so on.
@@ -147,7 +148,7 @@ If hooks were declared within loops or conditional structures, the hook list in 
 ![hook-work-in-progress](/static/images/posts/how-useState-works-internally-in-react-18/hook-work-in-progress.png)
 
 
-## [3. The Interleaved Queue (memoizedState.queue.interleaved)](#interleaved-queue)
+## [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
 When the setter function `dispatchSetState()` is invoked, it creates an update object containing the update details, such as the action (callback) and update priority. `dispatchSetState()` then invokes `enqueueConcurrentHookUpdate()` to store this update object into the fiber.
 
 If there is no existing update object in the fiber, this new update object is stored as `fiber.memoizedState.queue.interleaved`. If the setter function is invoked multiple times, subsequent update objects are stored in a circular linked list. This design enhances performance, allowing React to efficiently manage and append new update objects.
@@ -163,7 +164,8 @@ In the example above, the memoizedState and updates objects are depicted as foll
 
 
 
-## [4. The Pending Queue (memoizedState.queue.pending)](#pending-queue)
+## [4. The `pending` Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
+
 There are three types of pending update queues:
 1. `interleaved` Queue: Stores updates that occur outside the render phase.
 2. `baseQueue`: Stores updates that were skipped due to lower priority during the current processing.
@@ -217,7 +219,7 @@ export function Counter() {
 
 ![state-update-during-render](/static/images/posts/how-useState-works-internally-in-react-18/state-update-during-render.png)
 
-## [5. updateState](#updateState)
+## [5. The `updateState()` Function](#5-the-updatestate-function)
 When a `setState()` method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately. If the new state is the same as the current state, React skips scheduling a re-render, allowing an early bailout.
 
 Otherwise, React creates an update object representing the update information, stores it in the fiber, and invokes `scheduleUpdateOnFiber()` to trigger the rendering process.

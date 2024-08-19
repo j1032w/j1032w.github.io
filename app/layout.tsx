@@ -95,16 +95,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <link
         rel="icon"
         type="image/png"
-        sizes="32x32"
-        href={`${basePath}/static/favicons/favicon-32x32.png`}
-      />
-      <link
-        rel="icon"
-        type="image/png"
         sizes="16x16"
-        href={`${basePath}/static/favicons/favicon-16x16.png`}
+        href={`${basePath}/static/favicons/favicon.png`}
       />
-      <link rel="manifest" href={`${basePath}/static/favicons/site.webmanifest`} />
+      {/*<link rel="manifest" href={`${basePath}/static/favicons/site.webmanifest`} />*/}
       <link
         rel="mask-icon"
         href={`${basePath}/static/favicons/safari-pinned-tab.svg`}
