@@ -26,9 +26,10 @@ React then schedules the component to re-render by calling `scheduleUpdateOnFibe
 
 
 
-The call graph is illustrated as below:
+The `useState()` call graph is illustrated as below:
 ![useState-call-graph](/static/images/posts/how-useState-hook-works-internally-in-react-18/useState-call-graph.png)
 
+The fiber's memoizedState structure are depicted as follows
 ![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
 
 ## [Rules of Hooks](#rules-of-hooks)
@@ -104,7 +105,9 @@ https://github.com/facebook/react/blob/v18.3.1/packages/react/src/ReactHooks.js#
 
 
 ## [2. The `mountState()` Function](#2-the-mountstate-function)
-During the initial render of a component, when useState() is called, `resolveDispatcher()` returns the `mountState()` method. `mountState()` internally invokes `mountWorkInProgressHook()`, which creates a hook object stored as `memoizedState` in the corresponding fiber. This allows React to maintain the state across renders.
+During the initial render of a component, when `useState()` is called, `resolveDispatcher()` returns the `mountState()` method. `mountState()` internally invokes `mountWorkInProgressHook()`, which creates a hook object stored as `memoizedState` in the corresponding fiber. This allows React to maintain the state across renders.
+
+![mountState](/static/images/posts/how-useState-hook-works-internally-in-react-18/mount-state.png)
 
 The first hook used in a function component is stored in the `memoizedState` property of the fiber. Subsequent hooks are stored in a linked-list manner, where the second is stored in `memoizedState.next`, the third in `memoizedState.next.next`, and so on.
 
@@ -226,7 +229,7 @@ Otherwise, React creates an update object representing the update information, s
 
 During the rendering process:
 
-(a) React invokes finishQueueingConcurrentUpdates() to merge updates from the `interleaved` queue into the `pending` queue.
+(a) React invokes `finishQueueingConcurrentUpdates()` to merge updates from the `interleaved` queue into the `pending` queue.
 
 (b) `renderWithHooks()` is called, configuring ReactCurrentDispatcher to point to the `updateState()` implementations.
 
@@ -236,7 +239,7 @@ During the rendering process:
 (d) `updateReducer()` first merges the updates in the pending queue into a base queue and then traverses the base queue, executing callbacks for the updates that match the current update priority. Updates that do not meet the required priority are stored back in the base queue, awaiting the next rendering cycle to be processed.
 
 
-The call graph for the update process is illustrated as below:
+The call graph for render process is illustrated as below:
 ![updateState-call-graph](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateState-call-graph.png)
 
 ![updateReducer-sreenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateReducer-sreenshot.png)

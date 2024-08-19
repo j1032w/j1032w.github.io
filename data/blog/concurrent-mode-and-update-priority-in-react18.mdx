@@ -1,10 +1,10 @@
 ---
-title: 'Concurrent Rendering and Update Priority in React 18'
+title: 'Concurrent Mode and Lane Prioritization in React 18'
 date: '2024-08-11'
 lastmod: '2024-08-11'
 tags: ['react-js', 'in-depth']
 draft: false
-summary: 'In React, events are encapsulated within synthetic events, and instead of attaching event handlers to individual HTML elements, React employs a technique known as event delegation, attaching a single event listener to the root element.'
+summary: 'When an event triggers an update, React determines the update lane based on the event''s priority. If a new update with a higher priority arrives, React cancels the ongoing task and schedules a new task for this higher-priority update. React then continues by scheduling tasks for the remaining lanes in descending order of priority, effectively creating a cascading sequence of tasks.'
 images: []
 ---
 
@@ -12,7 +12,8 @@ images: []
 React has evolved over the years, and one of the significant advancements is the introduction of Concurrent Mode. This mode allows React to break free from the constraints of synchronous rendering, enabling more flexible and responsive user interfaces. Concurrent Mode brings along a sophisticated update priority system, which ensures that the most crucial updates are handled promptly while less critical updates can be deferred.\
 In this blog, we’ll delve into the technical intricacies of Concurrent Mode in React, particularly focusing on how updates are triggered, scheduled, and prioritized.
 
-- [Update Lanes and Bitwise Opertions](#lanes-and-the-priority-system)
+- [Key Steps in React Concurrent Mode](#key-steps-in-react-concurrent-mode)
+- [Lanes and Priority System in React](#lanes-and-the-priority-system)
 - [Real-Life Analogy](#real-life-analogy)
 
 
@@ -22,18 +23,45 @@ The call graph of prioritized updates illustrates as below:
 ![schedule-task-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/schedule-task-call-graph.png)
 
 
+## [Key Steps in React Concurrent Mode](#key-steps-in-react-concurrent-mode)
+
+1. **Triggering an Update**: An update can be initiated by various actions, including user interactions, network responses, or timers.
+
+2. **Scheduling the Update**: React determines the priority of each update task and adds an update object to the fiber's update queue.
+
+3. **Rendering**: React calls the component function and creates or updates the fiber tree based on the changes.
+
+4. **Commit**: All changes are committed to the real DOM in a single, synchronous step, followed by the execution of `useLayoutEffect()` and `useEffect()` hooks.
 
 
 
-## [Update Lanes and Bitwise Opertions](#lanes-and-the-priority-system)
-React uses a concept called “lanes” to prioritize and manage updates. Each update is assigned to a lane based on its urgency and type. React defines 31 lanes in the binary form. With multiple lanes merged into a single binary number, each bit in the binary number can represent a different priority level. This system allows React to represent multiple priority levels in a single number, making it easy to manage and schedule updates using bitwise operations.
+## [React Priority System](#react-priority-system)
+There are three priority systems in React:
 
-React categorizes the 31 lanes into 7 groups, with priority levels arranged from high to low:\
-**SyncLanes > InputContinuousLanes > DefaultLanes > TransitionLanes > RetryLanes > IdleLanes > OffScreenLanes**
+1. **Event Priority**: marks the priority of user events based on the type of event. Common event priorities include **Discrete**, **Continuous**, and **Default**. For example,\
+Discrete events (e.g., click, keydown, focus) have the highest priority because they directly affect user input responsiveness.  \
+On the other hand, Continuous events (e.g., mousemove, drag, scroll, mouseover) can be handled more gradually to avoid blocking the browser's main thread.
+
+2. **Scheduler Priority**: used by React's internal scheduler to prioritize tasks. React defines several scheduler priority levels, such as **Immediate**, **UserBlocking**, **Normal**, **Low**, and **Idle**, each indicating how soon a task should be processed.\
+The scheduler priority level can be found in the following file:\
+https://github.com/facebook/react/blob/v18.3.1/packages/scheduler/src/forks/Scheduler.js#L324
 
 
-The lanes definition can be found in the following file:\
-ReactFiberLane.new.js https://github.com/facebook/react/blob/v18.3.1/packages/react-reconciler/src/ReactFiberLane.new.js#L34
+3. **Lane Priority**: categorize the fiber's updates into different buckets (or lanes), where each fiber may have multiple updates with different priorities.
+
+When an event triggers an update, React calculates the update lane based on the event priority.  The Scheduler uses lane priorities to manage and schedule work. This way, high-priority updates (like those affecting user inputs) can jump ahead of less critical updates (like logging or analytics services updates).
+
+
+
+## [Update Lanes](#update-lanes)
+React defines 31 lanes, represented in binary form, allowing multiple lanes (or priorities) to be represented by a single number. Each bit in a binary number corresponds to a different type of work or priority level, enabling efficient merging or sorting of updates using bitwise operations.
+
+The 31 lanes categorizes into 7 groups, with priority levels arranged from high to low:\
+`SyncLanes` > `InputContinuousLanes` > `DefaultLanes` > `TransitionLanes` > `RetryLanes` > `IdleLanes` > `OffScreenLanes`
+
+
+The lanes definition can be found in the following file: \
+https://github.com/facebook/react/blob/v18.3.1/packages/react-reconciler/src/ReactFiberLane.new.js#L34
 
 ```
 export const TotalLanes = 31;
@@ -55,9 +83,7 @@ const TransitionLane1: Lane = /*                        */ 0b0000000000000000000
 
 ```
 
-Because the update lanes are represented in binary form, React can use bitwise operations to manipulate lanes and determine the priority of updates efficiently.
-
-For instance, to find the highest priority lane, we may perform a bitwise AND operation between lanes and (Not lanes).
+React uses bitwise operations to manipulate lanes and determine the priority of updates efficiently. For instance, to find the highest priority lane, we may perform a bitwise AND operation between lanes and (Not lanes).
 ```
 var lanes = 0b01011000;
 ~lanes; // 0b10101000
@@ -73,29 +99,61 @@ pendingLanes |= updateLane; // 0b0111
 ```
 
 
+## [Assign Update's Priority](#assign-updates-priority)
+When an event triggers an update, React calculates the update lane based on the event priority. The update lane is then passed to `enqueueConcurrentHookUpdate()` to mark the fiber for updating. Finally, `scheduleUpdateOnFiber()` schedules the update based on the lane priority.
+The call graph is illustrated as below:
+![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
 
-## [How useState Works Internally](#how-usestate-works-internally)
-The `useState()` hook in React is fundamental for managing state in function components. Internally, it initializes state by invoking `mountState()`, which returns a memoized state variable and a bound version of the `dispatchSetState()` function.
+### [1. Evaluating Current Update Lane](#1-evaluating-current-update-lane)
+When `setState()` is invoked, React calls `requestUpdateLane()` to determine the priority lane for the update.
+- **Transition Task**: If the update is part of a transition task (like `Suspense`, `useTransition`, or `useDeferredValue`), React searches for an available lane among the 16 transition lanes. These lanes are cycled through, so once lane 16 is reached, the next transition update will loop back to lane 1.
 
-![mount-state](/static/images/posts/concurrent-mode-and-update-priority-in-react18/mount-state.png)
+- **Event-Triggered Updates**: If the update is not part of a transition task, React invokes `getCurrentUpdatePriority()` to determine the priority of the current task, which is based on the event that triggered the update. This ensures that event-driven updates are assigned the correct level of urgency.
 
+- **Default Handling for Non-Event Updates**: In cases where the update is triggered by an I/O operation or other non-event-driven source, React assigns the update to the `DefaultLane`. This provides a fallback mechanism for updates that don't have an associated event or transition context, ensuring they are still processed appropriately.
 
-The `mounteState()` internally creates a hook linked list which represent all hooks used in the component. It is stored as memoizedState in the corresponding fiber, allowing React to maintain the state across renders.
-![memoized-state](/static/images/posts/concurrent-mode-and-update-priority-in-react18/memoized-state.png)
-
-
-Note, there 2 different `memoizedStates` properties. The `fiber.memoizedState` is the hooks linked list, the `hook.memoizedState` is the value of the hook state.\
-The first hook used in a component is stored in the memoizedState property, with subsequent hooks stored in a linked list manner: the second in `memoizedState.next`, the third in memoizedState.next.next, and so forth.
-
-Each fiber node maintains its hooks as a linked list. When hooks are declared within loops or conditional structures, it can disrupt the consistency of hooks between the current fiber and its work-in-progress counterpart during re-renders. This inconsistency impedes the correct synchronization of hook states, that is why hooks should not be declared inside loops or conditional statements.
+![evaluating-update-lane](/static/images/posts/concurrent-mode-and-update-priority-in-react18/evaluating-update-lane.png)
 
 
-When a setState method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately before entering the render phase. And if the new state is same as the current state, React stops going deeper to skip the re-render of a subtree to avoid scheduling re-render, so early bailout
 
-Otherwise, React creates an update object to represent the update information, such as callback method, update priority, etc, and stores it into the `memoizedState.queue.interleaved`.  The memoizedState.queue.interleaved is a circular linked list, and the `interleaved` points to the tail. The most important reason for this design is to improve performance. In the React execution flow, new update objects need to be frequently added to the end of the list. the last node in the list can be directly accessed as the interleaved node. Finding the first node is also convenient because the next node of the last node is the first node.
+### [2. Marking Pending Fibers in the Tree](#2-marking-pending-fibers-in-the-tree)
+React creates an update object with the determined lane and attaches it to the fiber node using `enqueueConcurrentHookUpdate()`. This function triggers `markUpdateLaneFromFiberToRoot()`, which is responsible for marking all affected fibers from the current fiber up through the parent path to the root. This process serves two primary purposes:
+
+- **Merging Update Lane Priorities**: The function merges the update lane priority into the lanes property of the current fiber node. This merge indicates that the fiber has pending work that needs to be processed during the next render.
+
+- **Propagating Child Fiber Lanes**: It also merges the lanes of all child fibers into the childLanes property of the parent fiber. This merge signals that there is pending work within the child fibers that the parent needs to account for.
+
+For example, consider the Counter component described above. When a button in the Counter component is clicked, triggering the setCount() method that invokes `setState()` three times directly and one within a startTransition() method. As a result, the update lane of the Counter fiber becomes `0b10000001` (or decimal `129`), which is a combination of a TransitionLane1 (`0b1000000`) and a sysLane (`0b1`). This combination ensures that both high-priority and transitional updates are correctly prioritized and handled by React.
+
+Then React sets the lanes property of the Counter fiber to `0b10000001` and the childLanes property to `0`. The fibers along the path from the Counter to the root are updated accordingly, with their lanes reflecting the combined priorities of the updates.
+
+![marking-pending-fibers-in-the-tree](/static/images/posts/concurrent-mode-and-update-priority-in-react18/marking-pending-fibers-in-the-tree.png)
+![marking-pending-fibers-in-the-tree-screenshot](/static/images/posts/concurrent-mode-and-update-priority-in-react18/marking-pending-fibers-in-the-tree-screenshot.png)
 
 
+### [3. Prioritizing Update](#3-prioritizing-update)
+React invokes the scheduleUpdateOnFiber() function to schedule a re-render. Here’s how React manages this process:
+
+a) **Updating Root Pending Lane**: React invokes `markRootUpdated()` to combine all fibers' update lanes into the root's `pendingLanes`, and set the `eventTime` for the root, marking the time when the current event occurred. After updating the root, React calls 1ensureRootIsScheduled()1, which orchestrates several key actions below.
+
+b) **Preventing Lane Starvation**: React invokes `markStarvedLanesAsExpired()` to handle lanes that have exceeded their expiration time. Lanes marked as expired are prioritized for synchronous execution in the next task cycle, bypassing time slicing. This function calculates the expiration time for the current update lane, stores it in the root's expirationTimes array, and combines the expired lanes into `root.expiredLanes`, ensuring they are processed without delay.
+
+
+c) **Batching Updates**: React uses `getHighestPriorityLane()` to determine the most urgent update lane from the root fiber. If the new highest priority update matches the current pending task priority (`root.callbackPriority`), React skips scheduling a new task and returns immediately. Otherwise, it updates `root.callbackPriority` with the new highest priority lane.\
+This mechanism prevents redundant task scheduling and ensures that updates within the same event cycle are batched together, optimizing performance. For instance, in the above Counter component example, three `setState()` calls within the click handler are batched, resulting in only one task being scheduled. A fourth `setState()` call within a `startTransition` is assigned a different lane, thus another scheduled task will process it.
+
+![batching-update](/static/images/posts/concurrent-mode-and-update-priority-in-react18/batching-update.png)
+
+
+d) **Interrupting and Rescheduling Tasks**: When a new update with a higher priority lane than the current `root.callbackPriority` arrives, React cancels the ongoing task to prevent lower-priority work from blocking more critical updates. Then React schedules a new task with this higher priority lane. This newly scheduled task processes this urgent update first, ensuring that React prioritizes the most important work. Once this higher priority update is completed, React continues by scheduling another task for the next highest priority lane, effectively creating a cascading sequence of tasks based on priority.\
+This cascading approach ensures that React processes updates in order of urgency, dynamically adjusting to new, higher-priority tasks as they emerge.
+
+
+e) **Scheduling New Tasks**: If the highest priority update lane is `SyncLane`, React recognizes the need for immediate execution. In this case, it invokes `scheduleSyncCallback()` to maintain a queue of synchronous tasks. Following this, `flushSyncCallbacks()` is called to execute all pending updates in the highest priority lane without delay. \
+For other lanes, React uses `scheduleCallback()`, allowing the task to be processed concurrently. During the rendering commit phase, React once again calls `ensureRootIsScheduled()` to continue processing updates, starting with the next highest priority lane. This priority-based scheduling system ensures that React efficiently manages updates, processing them lane by lane, and dynamically responding to new, higher-priority updates as they come in.
+
+![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
 
 
