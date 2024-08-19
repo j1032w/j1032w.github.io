@@ -1,10 +1,10 @@
 ---
-title: 'How useState Works Internally in React 18'
+title: 'How `useState( )` Hook Works Internally in React 18'
 date: '2024-03-14'
 lastmod: '2024-03-14'
 tags: ['react-js', 'in-depth']
 draft: false
-summary: 'When you call `setState()`, React doesn''t immediately update the state. Instead, it creates an update object and places it in a queue within the component''s fiber, which is the underlying data structure that React uses to manage and reconcile the component tree.'
+summary: 'Learn how `mountState( )` and `updateState( )` manage state across renders, and why following the rules of hooks—like calling them at the top level and avoiding conditional use, avoid directly calling a component function, asynchronous nature of `setState( )`, etc —is crucial for maintaining consistent state in your components.'
 images: []
 ---
 
@@ -27,9 +27,9 @@ React then schedules the component to re-render by calling `scheduleUpdateOnFibe
 
 
 The call graph is illustrated as below:
-![useState-call-graph](/static/images/posts/how-useState-works-internally-in-react-18/useState-call-graph.png)
+![useState-call-graph](/static/images/posts/how-useState-hook-works-internally-in-react-18/useState-call-graph.png)
 
-![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
+![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
 
 ## [Rules of Hooks](#rules-of-hooks)
 Before diving deeper, it's essential to understand some key rules that govern how hooks, including useState, should be used. In this blog, I will explain the reasoning behind these rules:
@@ -84,7 +84,7 @@ current === null || current.memoizedState === null
 : HooksDispatcherOnUpdate;
 }
 ```
-![renderWithHooks](/static/images/posts/how-useState-works-internally-in-react-18/renderWithHooks.png)
+![renderWithHooks](/static/images/posts/how-useState-hook-works-internally-in-react-18/renderWithHooks.png)
 
 
 
@@ -139,13 +139,13 @@ export function Counter() {
 }
 
 ```
-![fiber-memoizedState-structure](/static/images/posts/how-useState-works-internally-in-react-18/fiber-memoizedState-structure.png)
+![fiber-memoizedState-structure](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-structure.png)
 
 
 If hooks were declared within loops or conditional structures, the hook list in the work-in-progress fiber might differ from the current fiber across renders. This mismatch can cause the hook states to become misaligned between the current and work-in-progress fibers, which is why hooks should not be declared inside loops or conditions.
 
 
-![hook-work-in-progress](/static/images/posts/how-useState-works-internally-in-react-18/hook-work-in-progress.png)
+![hook-work-in-progress](/static/images/posts/how-useState-hook-works-internally-in-react-18/hook-work-in-progress.png)
 
 
 ## [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
@@ -156,9 +156,9 @@ If there is no existing update object in the fiber, this new update object is st
 The last update object points back to `fiber.memoizedState.queue.interleaved`, forming a circular linked list. This design improves performance by allowing React to efficiently append new update objects to the list, while also enabling direct access to the last node (the interleaved node). Additionally, finding the first node is straightforward since it is simply the next node after the last node.
 
 In the example above, the memoizedState and updates objects are depicted as follows:
-![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
+![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
 
-![fiber-memoizedState-screenshot](/static/images/posts/how-useState-works-internally-in-react-18/fiber-memoizedState-screenshot.png)
+![fiber-memoizedState-screenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-screenshot.png)
 
 
 
@@ -171,13 +171,13 @@ There are three types of pending update queues:
 2. `baseQueue`: Stores updates that were skipped due to lower priority during the current processing.
 3. `pending` Queue: Stores updates that will be processed in the next `updateReducer()` call.
 
-![pending-update-queue](/static/images/posts/how-useState-works-internally-in-react-18/pending-update-queue.png)
+![pending-update-queue](/static/images/posts/how-useState-hook-works-internally-in-react-18/pending-update-queue.png)
 
 
 Before `updateReducer()` is invoked, both the `interleaved` and `baseQueue` are merged into the `pending` queue.
 
 
-![finishQueueingConcurrentUpdates-screenshot](/static/images/posts/how-useState-works-internally-in-react-18/finishQueueingConcurrentUpdates-screenshot.png)
+![finishQueueingConcurrentUpdates-screenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/finishQueueingConcurrentUpdates-screenshot.png)
 
 
 When a state update is triggered during the render phase, React cannot immediately re-render the component because it is already in the middle of the rendering process. In this scenario, `dispatchSetState()` invokes `enqueueRenderPhaseUpdate()` to queue the update object into `memoizedState.queue.pending`. React processes these pending updates after the current render is completed, which may lead to another render to apply the state changes.
@@ -217,7 +217,7 @@ export function Counter() {
 
 ```
 
-![state-update-during-render](/static/images/posts/how-useState-works-internally-in-react-18/state-update-during-render.png)
+![state-update-during-render](/static/images/posts/how-useState-hook-works-internally-in-react-18/state-update-during-render.png)
 
 ## [5. The `updateState()` Function](#5-the-updatestate-function)
 When a `setState()` method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately. If the new state is the same as the current state, React skips scheduling a re-render, allowing an early bailout.
@@ -237,9 +237,9 @@ During the rendering process:
 
 
 The call graph for the update process is illustrated as below:
-![updateState-call-graph](/static/images/posts/how-useState-works-internally-in-react-18/updateState-call-graph.png)
+![updateState-call-graph](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateState-call-graph.png)
 
-![updateReducer-sreenshot](/static/images/posts/how-useState-works-internally-in-react-18/updateReducer-sreenshot.png)
+![updateReducer-sreenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateReducer-sreenshot.png)
 
 
 ## [Conclusion](#conclusion)
