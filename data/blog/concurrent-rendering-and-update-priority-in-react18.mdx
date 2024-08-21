@@ -1,5 +1,5 @@
 ---
-title: 'Concurrent Mode and Lane Prioritization in React 18'
+title: 'Concurrent Rendering and Lane Prioritization in React 18'
 date: '2024-08-11'
 lastmod: '2024-08-11'
 tags: ['react-js', 'in-depth']
@@ -13,10 +13,10 @@ React Concurrent Rendering optimizes UI performance by breaking down updates int
 
 The scheduler interacts with the JavaScript event loop, processing tasks in short bursts (typically 5ms) to keep the UI responsive. React's ability to interrupt lower-priority tasks when higher-priority ones arise ensures that the most critical updates are rendered promptly, maintaining a seamless user experience even during complex rendering tasks.
 
-- [Key Steps in React Concurrent Mode](#key-steps-in-react-concurrent-mode)
+- [Key Steps in React Concurrent Rendering](#key-steps-in-react-concurrent-rendering)
 - [React Priority System](#react-priority-system)
 - [Update Lanes](#update-lanes)
-- [Handling Update Priority](#assign-updates-priority)
+- [Handling Update Priority](#handling-update-priority)
   - [1. Evaluating Current Update Lane](#1-evaluating-current-update-lane)
   - [2. Marking Pending Fibers in the Tree](#2-marking-pending-fibers-in-the-tree)
   - [3. Batching and Interupting Updates](#3-batching-and-interupting-updates)
@@ -29,12 +29,12 @@ The scheduler interacts with the JavaScript event loop, processing tasks in shor
 - [Real-Life Analogy](#real-life-analogy)
 
 The call graph of prioritized updates illustrates as below:
-![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
+![handle-update-priority-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
-![schedule-task-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/schedule-task-call-graph.png)
+![schedule-task-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/schedule-task-call-graph.png)
 
 
-## [Key Steps in React Concurrent Mode](#key-steps-in-react-concurrent-mode)
+## [Key Steps in React Concurrent Rendering](#key-steps-in-react-concurrent-rendering)
 
 1. **Triggering an Update**: An update can be initiated by various actions, including user interactions, network responses, or timers.
 
@@ -113,7 +113,7 @@ pendingLanes |= updateLane; // 0b0111
 ## [Handling Update Priority](#handling-update-priority)
 When an event triggers an update, React calculates the update lane based on the event priority. The update lane is then passed to `enqueueConcurrentHookUpdate()` to mark the fiber for updating. Finally, `scheduleUpdateOnFiber()` schedules the update based on the lane priority.
 The call graph is illustrated as below:
-![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
+![handle-update-priority-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
 
 ### [1. Evaluating Current Update Lane](#1-evaluating-current-update-lane)
@@ -124,7 +124,135 @@ When `setState()` is invoked, React calls `requestUpdateLane()` to determine the
 
 - **Default Handling for Non-Event Updates**: In cases where the update is triggered by an I/O operation or other non-event-driven source, React assigns the update to the `DefaultLane`. This provides a fallback mechanism for updates that don't have an associated event or transition context, ensuring they are still processed appropriately.
 
-![evaluating-update-lane](/static/images/posts/concurrent-mode-and-update-priority-in-react18/evaluating-update-lane.png)
+
+Considering the example below, the first three `setState()` calls, which are invoked directly inside the click handler, are assigned to the synchronous lane (blocking lane). Therefore, like the initial mount, concurrent mode is not activated. However, the fourth `setState()` call, which is wrapped inside the `startTransition()` method, is assigned to a concurrent lane (`TransitionLane1`). As a result, it will be processed in concurrent mode.
+
+```
+export function App() {
+  return (
+    <A />
+  );
+}
+
+export function Counter() {
+  const [count1, setCount1] = useState(10);
+  const [count2, setCount2] = useState(100);
+  const [count3, setCount3] = useState(1000);
+  const [isPending, startTransition] = useTransition();
+
+  const handleClick = () => {
+    setCount1((prev) => {
+      return prev + 1;
+    });
+
+    setCount1((prev) => {
+      return prev + 2;
+    });
+
+    setCount2((prev) => {
+      return prev + 200;
+    });
+
+    startTransition(() => {
+      setCount3((prev) => {
+        return prev + 3000;
+      });
+    });
+  };
+
+  return (<>
+    <h2> Counter1: {count1}</h2>
+    <h2> Counter2: {count2}</h2>
+    <h2> Counter3: {count3}</h2>
+    <button onClick={handleClick}>Increase</button>
+  </>);
+}
+
+export default function A({children}: {children?: ReactNode}) {
+  return (
+    <>
+    <h2> A</h2>
+      <B />
+      <C />
+      {children}
+    </>
+  );
+}
+
+export default function B({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2> B</h2>
+      {children}
+    </>
+  );
+}
+
+export default function C({ children }: { children?: ReactNode }) {
+  return (
+    <>
+      <h2> C</h2>
+      <Counter />
+      <E />
+      {children}
+    </>
+  );
+}
+
+export default function E({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2> E</h2>
+      <H />
+      <I />
+      {children}
+    </>
+  );
+}
+
+export default function F({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2>F</h2>
+      <G />
+      {children}
+    </>
+  );
+}
+
+export default function G({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2> G</h2>
+      {children}
+    </>
+  );
+}
+
+
+export default function H({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2> H</h2>
+      {children}
+    </>
+  );
+}
+
+export default function I({children}: {children?: ReactNode}) {
+  return (
+    <>
+      <h2> I</h2>
+      {children}
+    </>
+  );
+}
+```
+
+
+![evaluating-update-lane](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/evaluating-update-lane.png)
+
+
 
 
 
@@ -139,8 +267,8 @@ For example, consider the Counter component described above. When a button in th
 
 Then React sets the lanes property of the Counter fiber to `0b10000001` and the childLanes property to `0`. The fibers along the path from the Counter to the root are updated accordingly, with their lanes reflecting the combined priorities of the updates.
 
-![marking-pending-fibers-in-the-tree](/static/images/posts/concurrent-mode-and-update-priority-in-react18/marking-pending-fibers-in-the-tree.png)
-![marking-pending-fibers-in-the-tree-screenshot](/static/images/posts/concurrent-mode-and-update-priority-in-react18/marking-pending-fibers-in-the-tree-screenshot.png)
+![marking-pending-fibers-in-the-tree](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/marking-pending-fibers-in-the-tree.png)
+![marking-pending-fibers-in-the-tree-screenshot](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/marking-pending-fibers-in-the-tree-screenshot.png)
 
 
 ### [3. Batching and Interupting Updates](#3-batching-and-interupting-updates)
@@ -159,7 +287,7 @@ This mechanism prevents redundant task scheduling and ensures that updates with 
 For instance, in the above Counter component example, three `setState()` calls within the click handler are batched, resulting in only one task being scheduled. A fourth `setState()` call within a `startTransition` is assigned a different lane, thus another scheduled task will process it.\
  Otherwise, it updates `root.callbackPriority` with the new highest priority lane.
 
-![batching-update](/static/images/posts/concurrent-mode-and-update-priority-in-react18/batching-update.png)
+![batching-update](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/batching-update.png)
 
 
 - **Interrupting Lower-Priority Updates**: When the newly determined highest priority update is higher than the current `root.callbackPriority`, React cancels the ongoing task by set the task's callback to `null`. This prevents lower-priority work from blocking more critical updates. Then React schedules a new task with the new priority lane to processes this more urgent update first, ensuring that React prioritizes the most important work. \
@@ -171,7 +299,7 @@ This dynamic adjustment allows React to handle new, higher-priority tasks effici
 d) **Scheduling New Tasks**: If the highest priority update lane is `SyncLane`, React recognizes the need for immediate execution. In this case, it invokes `scheduleSyncCallback()` to maintain a queue of synchronous tasks. Following this, `flushSyncCallbacks()` is called to execute all pending updates in the highest priority lane without delay. \
 For other lanes, React uses `scheduleCallback()`, allowing the task to be processed concurrently. During the rendering commit phase, React once again calls `ensureRootIsScheduled()` to continue processing updates, starting with the next highest priority lane. This priority-based scheduling system ensures that React efficiently manages updates, processing them lane by lane, and dynamically responding to new, higher-priority updates as they come in.
 
-![handle-update-priority-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/handle-update-priority-call-graph.png)
+![handle-update-priority-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
 
 
@@ -187,7 +315,7 @@ React Scheduler internally maintains a task queue, where each task represents a 
 
 
 - a). **Calculating Expiration Time**: When a task is scheduled, React first calculates an expiration time based on the task's priority. This ensures that high-priority tasks are executed promptly, while lower-priority tasks can be deferred if necessary.
-You can check the relevant React source code here:
+You can check the relevant React source code here:\
 https://github.com/facebook/react/blob/v18.3.1/packages/scheduler/src/forks/Scheduler.js#L324
 ```
 function unstable_scheduleCallback(priorityLevel, callback, options) {
@@ -215,7 +343,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
 
 
 - b). **Creating the Task Object**: After calculating the expiration time, React creates a task object and adds it to the React internal task queue. This object holds the task's metadata, such as the start time, expiration time, and scheduler priority. \
-However, it’s crucial to understand that this task object does not hold information about the pending fiber. The rendering process then begins from the root node, progressing lane by lane based on priority."
+However, it’s crucial to understand that this task object does not hold information about the pending fiber. The rendering process then begins from the root node, progressing lane by lane based on priority.
 
 
 ### [2. Integrating with the JavaScript Event Loop](#2-two-distinct-task-queues)
@@ -235,7 +363,7 @@ React invokes the `requestHostCallback()` function, which in turn calls `schedul
 - b). **Executing and Managing Tasks in the JavaScript Event Loop**
 Once the JavaScript event loop is ready to process the task queue, it picks up `performWorkUntilDeadline()` and begins execution. This function processes tasks from React's internal task queue. After processing a task, React checks if approximately 5 milliseconds have elapsed. If so, `schedulePerformWorkUntilDeadline()` is called again to re-enqueue the function `performWorkUntilDeadline()`, and exit to allowing the browser to take control momentarily. Later, the JavaScript event loop will pick up the callback `performWorkUntilDeadline()` again and continue the cycle. This process repeats until all React tasks are completed, ensuring the UI remains responsive.
 
-You can explore the relevant React source code for Scheduler.js here.
+You can explore the relevant React source code for Scheduler.js here.\
 https://github.com/facebook/react/blob/v18.3.1/packages/scheduler/src/SchedulerFeatureFlags.js#L13
 ```
 export const frameYieldMs = 5;
@@ -245,7 +373,7 @@ export const frameYieldMs = 5;
 The use of the JavaScript event loop and the 5ms yield time is central to React's concurrent rendering. By distributing the workload across multiple iterations of the JavaScript event loop,
 React can handle even the most intensive rendering tasks without compromising the responsiveness of the user interface.
 
-![schedule-task-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/schedule-task-call-graph.png)
+![schedule-task-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/schedule-task-call-graph.png)
 
 
 
@@ -255,11 +383,11 @@ React can handle even the most intensive rendering tasks without compromising th
 The `schedulePerformWorkUntilDeadline()` is to add `performWorkUntilDeadline()` to the JavaScript task queue. Its implementation varies depending on the environment:
 
 - **Browser Environment**: In a browser environment, React uses `MessageChannel` to enqueue  callbacks. Before React v16.10, a combination of `requestAnimationFrame()` and `setTimeout()` was used. However, this method had its drawbacks, particularly because `requestAnimationFrame()` halts execution when the tab is backgrounded or when performance-saving measures are in place, leading to a poor user experience.\
- The pull request that introduced this change can be found here.
+ The pull request that introduced this change can be found here.\
 https://github.com/facebook/react/pull/16214 \
 \
 While `setTimeout(fn, 0)` can be a viable solution, but according to the HTML Standard, when the nesting level of setTimeout calls exceeds 5, the timeout is automatically adjusted to 4 milliseconds. This delay, although small, can accumulate and lead to performance issues. \
-More details on this behavior can be found in the HTML specification here.
+More details on this behavior can be found in the HTML specification here.\
 https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
 
 
@@ -287,7 +415,7 @@ This function is what React places in the JavaScript task queue to manage the ex
 - If the task has expired, the React task's callback is executed without delay."
 
 
-![wookloop](/static/images/posts/concurrent-mode-and-update-priority-in-react18/wookloop.png)
+![wookloop](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/wookloop.png)
 
 
 
@@ -296,16 +424,16 @@ This function is what React places in the JavaScript task queue to manage the ex
 
 - If the task has expired, `performConcurrentWorkOnRoot()` will call `renderRootSync()` to immediately process rendering without delay.
 
-- If the task is still within its time limit, `renderRootConcurrent()` is called, which in turn triggers `workLoopConcurrent()` to handle the rendering process. `workLoopConcurrent()` checks whether 5ms have passed before processing each Fiber. If the time limit is exceeded, control returns to `performWorkUntilDeadline()`, which then calls `schedulePerformWorkUntilDeadline()` to place itself back into the JavaScript event queue, allowing the browser to take control. This cycle continues until either all pending updates on the Fiber have been processed or the time limit is reached, at which point `renderRootSync()` is invoked to complete rendering without further delay.
+- If the task is still within its time limit, `renderRootConcurrent()` is called, which in turn triggers `workLoopConcurrent()` to handle the rendering process. `workLoopConcurrent()` checks whether 5ms have passed before processing each fiber. If the time limit is exceeded, control returns to `performWorkUntilDeadline()`, which then calls `schedulePerformWorkUntilDeadline()` to place itself back into the JavaScript event queue, allowing the browser to take control. This cycle continues until either all pending updates on the Fiber have been processed or the time limit is reached, at which point `renderRootSync()` is invoked to complete rendering without further delay.
 
 
 
-![workloopcurrent](/static/images/posts/concurrent-mode-and-update-priority-in-react18/workloopcurrent.png)
+![workloopcurrent](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/workloopcurrent.png)
 
 
 
 
-![schedule-task-call-graph](/static/images/posts/concurrent-mode-and-update-priority-in-react18/schedule-task-call-graph.png)
+![schedule-task-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/schedule-task-call-graph.png)
 
 
 
