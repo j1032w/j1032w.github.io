@@ -133,7 +133,7 @@ export default function Counter() {
 
 The fiber tree uses this linked list structure for several reasons:
 
--	Efficient depth-first traversal\
+-	**Efficient depth-first traversal**\
 The linked list pointers (`child`, `sibling`, `return`) make it easy to navigate the tree.\
 Here's an example of how depth-first traversal can be achieved:
 ```
@@ -163,14 +163,14 @@ function performWork(fiber) {
 ```
 
 
--	Asynchronous rendering\
+-	**Asynchronous rendering**\
 The linked list structure enables React to support pausing and resuming rendering, allowing it to handle higher-priority updates first. React breaks down the work into small chunks, or time slices (5 milliseconds), so they can be completed within a single frame, which is approximately 8ms on a 120Hz monitor. During traversal, if React decides to pause the work, it saves the state of the traversal (current node, remaining work) to resume from the same point later.\
 The definition of time slices can be found in the following source code:\
 https://github.com/facebook/react/blob/v18.3.1/packages/scheduler/src/SchedulerFeatureFlags.js#L13
 
 
 
--	Efficiently update fiber nodes\
+-	**Efficiently update fiber nodes**\
 o	Adding a new child using the `child` pointer.\
 o	Re-order or adding new sibling at the same level using the `sibling` pointer.\
 o	Move back up to the parent using the `return` pointer.
