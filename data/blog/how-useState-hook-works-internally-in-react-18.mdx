@@ -17,11 +17,11 @@ React then schedules the component to re-render by calling `scheduleUpdateOnFibe
 
 - [Introduction](#introduction)
 - [Rules of Hooks](#rules-of-hooks)
-- [1. Two Implementations of `useState`](#1-two-implementations-of-usestate)
-- [2. State Initialization During Mount Phase](#2-state-initialization-during-mount-phase)
+- [1. Three Implementations of `useState`](#1-three-implementations-of-usestate)
+- [2. State Initialization](#2-state-initialization)
 - [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
 - [4. The `pending` Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
-- [5. State Updates During the Re-Render Phase](#5-state-updates-during-the-re-render-phase)
+- [5. State Updates](#5-state-updates)
 - [Conclusion](#conclusion)
 
 
@@ -53,11 +53,14 @@ To optimize performance, React batches multiple setState() calls into a single u
 
 
 
-## [1. Two Implementations of `useState`](#1-two-implementations-of-usestate)
-React handles hooks like `useState` through a dispatcher mechanism, which ensures that the correct implementation of a hook is called based on the rendering phase—whether the component is being rendered for the first time (mount) or during subsequent renders (update).\
-Each hook in React is implemented in two forms:
-- mountFoo: Initializes the hook during the component's initial render.
-- updateFoo: Handles updates when the component re-renders in subsequent updates.
+## [1. Three Implementations of `useState`](#1-three-implementations-of-usestate)
+
+Each hook in React is implemented in three forms:
+- **mountFoo** (`HooksDispatcherOnMount`): Initializes the hook during the component's initial render.
+- **updateFoo** (`HooksDispatcherOnUpdate`): Updates the hook's state or re-applies effects based on the changes since the last render.
+- **renderFoo** (`HooksDispatcherOnRerender`): Handles re-renders that occur without a change in state, props, or context. Typically due to a parent component's re-render, and for double invoking components in Dev Strict Mode. It does not update the hook state but checks for consistency, ensuring the hooks' identity and order remain stable across renders.
+
+React handles hooks like `useState` and `useEffect` through a dispatcher mechanism, which ensures that the correct implementation of a hook is called based on the rendering phase—whether the component is being rendered for the first time (mount) or during subsequent renders (update).
 
 When a hook like `useState` or `useEffect` is invoked, it internally calls `resolveDispatcher()`, which accesses `ReactCurrentDispatcher` to retrieve and execute the correct hook implementation.
 For example, `useState()` is implemented as follows:
@@ -78,7 +81,7 @@ The `renderWithHooks()` function is responsible for rendering components that us
 You may refer the function `renderWithHooks()` code from here
 https://github.com/facebook/react/blob/v18.3.1/packages/react-reconciler/src/ReactFiberHooks.new.js#L415
 
-```
+```typescript
 if (__DEV__) {
 if (current !== null && current.memoizedState !== null) {
 ReactCurrentDispatcher.current = HooksDispatcherOnUpdateInDEV;
@@ -98,6 +101,16 @@ current === null || current.memoizedState === null
 ? HooksDispatcherOnMount
 : HooksDispatcherOnUpdate;
 }
+...
+
+// Check if there was a render phase update
+if (didScheduleRenderPhaseUpdateDuringThisPass) {
+  ...
+   ReactCurrentDispatcher.current = __DEV__
+          ? HooksDispatcherOnRerenderInDEV
+        : HooksDispatcherOnRerender;
+}
+
 ```
 ![renderWithHooks](/static/images/posts/how-useState-hook-works-internally-in-react-18/renderWithHooks.png)
 
@@ -106,7 +119,7 @@ current === null || current.memoizedState === null
 
 
 
-## [2. State Initialization During Mount Phase](#2-state-initialization-during-mount-phase)
+## [2. State Initialization](#2-state-initialization)
 During the initial render of a component, when `useState()` is called, `resolveDispatcher()` returns the `mountState()` method. `mountState()` internally invokes `mountWorkInProgressHook()`, which creates a hook object stored as `memoizedState` in the corresponding fiber. This allows React to maintain the state across renders.
 
 ![mountState](/static/images/posts/how-useState-hook-works-internally-in-react-18/mount-state.png)
@@ -224,7 +237,7 @@ export function Counter() {
 
 ![state-update-during-render](/static/images/posts/how-useState-hook-works-internally-in-react-18/state-update-during-render.png)
 
-## [5. State Updates During the Re-Render Phase](#5-state-updates-during-the-re-render-phase)
+## [5. State Updates](#5-state-updates)
 - When a `setState()` method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately. If the new state is the same as the current state, React skips scheduling a re-render, allowing an early bailout.
 
 - Otherwise, React creates an update object representing the update information, stores it in the fiber, and schedules a re-render.
