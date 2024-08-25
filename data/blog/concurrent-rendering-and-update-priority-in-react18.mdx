@@ -4,7 +4,7 @@ date: '2024-08-11'
 lastmod: '2024-08-11'
 tags: ['react-js', 'in-depth']
 draft: false
-summary: 'React categorizes tasks into 31 update lanes, each representing different priority levels. React schedules and executes these updates by enqueuing tasks into a task queue that integrates with the JavaScript event loop. It processes tasks in small chunks, yielding control back to the browser every 5ms to keep the UI responsive.'
+summary: 'React categorizes pending updates into 31 update lanes, each representing different priority levels. React schedules and executes these updates by enqueuing tasks into a task queue that integrates with the JavaScript event loop. It processes updates in small chunks, yielding control back to the browser every 5ms to keep the UI responsive.'
 images: []
 ---
 
@@ -272,7 +272,7 @@ Then React sets the lanes property of the Counter fiber to `0b10000001` and the 
 
 
 ### [3. Batching and Interupting Updates](#3-batching-and-interupting-updates)
-React invokes the scheduleUpdateOnFiber() function to schedule a re-render. Here’s how React manages this process:
+React invokes the `scheduleUpdateOnFiber()` function to schedule a re-render. Here’s how React manages this process:
 
 a) **Updating Root Pending Lane**: React invokes `markRootUpdated()` to combine all fibers' update lanes into the root's `pendingLanes`, and set the `eventTime` for the root, marking the time when the current event occurred. After updating the root, React calls 1ensureRootIsScheduled()1, which orchestrates several key actions below.
 

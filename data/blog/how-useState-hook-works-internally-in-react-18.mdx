@@ -19,9 +19,11 @@ React then schedules the component to re-render by calling `scheduleUpdateOnFibe
 - [Rules of Hooks](#rules-of-hooks)
 - [1. Three Implementations of `useState`](#1-three-implementations-of-usestate)
 - [2. State Initialization](#2-state-initialization)
-- [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
-- [4. The `pending` Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
-- [5. State Updates](#5-state-updates)
+- [3. Queueing Updates with Setter Function](#3-queueing-updates-with-setter-function)
+- [4. The Pending Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
+  - [State Updates During Render](#state-updates-during-render)
+- [5. Applying State Changes](#5-applying-state-changes)
+
 - [Conclusion](#conclusion)
 
 
@@ -129,7 +131,7 @@ The first hook used in a function component is stored in the `memoizedState` pro
 `mountState()` returns a state variable along with a bound version of the `dispatchSetState()` function. Consequently, the setter function provided by the `useState` hook is effectively a bound version of `dispatchSetState()`.
 
 In the example below, the Counter component demonstrates how useState hooks are organized in the fiber's `memoizedState`:
-```
+```tsx
 export function Counter() {
   const [count1, setCount1] = useState(10);
   const [count2, setCount2] = useState(100);
@@ -166,12 +168,12 @@ If hooks were declared within loops or conditional structures, the hook list in 
 ![hook-work-in-progress](/static/images/posts/how-useState-hook-works-internally-in-react-18/hook-work-in-progress.png)
 
 
-## [3. The `interleaved` Queue (`memoizedState.queue.interleaved`)](#3-the-interleaved-queue-memoizedstatequeueinterleaved)
-When the setter function `dispatchSetState()` is invoked, it creates an update object containing the update details, such as the action (callback) and update priority. `dispatchSetState()` then invokes `enqueueConcurrentHookUpdate()` to store this update object into the fiber.
+## [3. Queueing Updates with Setter Function](#3-queueing-updates-with-setter-function)
+When the `setState()` method (a bound version of `dispatchSetState()`) is invoked, it creates an update object containing the update details, such as the action (callback) and update priority. `dispatchSetState()` then invokes `enqueueConcurrentHookUpdate()` to add this update object to the fiber's update queue.
 
-If there is no existing update object in the fiber, this new update object is stored as `fiber.memoizedState.queue.interleaved`. If the setter function is invoked multiple times, subsequent update objects are stored in a circular linked list. This design enhances performance, allowing React to efficiently manage and append new update objects.
+If there is no existing update object in the fiber, this new update object is stored as `fiber.memoizedState.queue.interleaved`. If the `setState()` is invoked multiple times, subsequent update objects are stored in a circular linked list. This structure optimizes performance by enabling React to efficiently manage and add new updates.
 
-The last update object points back to `fiber.memoizedState.queue.interleaved`, forming a circular linked list. This design improves performance by allowing React to efficiently append new update objects to the list, while also enabling direct access to the last node (the interleaved node). Additionally, finding the first node is straightforward since it is simply the next node after the last node.
+The circular linked list design means that the last update object points back to the initial node (`fiber.memoizedState.queue.interleaved`). This setup allows React to quickly append new updates and provides easy access to the last and first nodes in the list, enhancing the efficiency of state management.
 
 In the example above, the memoizedState and updates objects are depicted as follows:
 ![fiber-memoizedState-with-pending-updates](/static/images/posts/how-useState-hook-works-internally-in-react-18/fiber-memoizedState-with-pending-updates.png)
@@ -182,22 +184,27 @@ In the example above, the memoizedState and updates objects are depicted as foll
 
 
 
-## [4. The `pending` Queue (`memoizedState.queue.pending`)](#4-the-pending-queue-memoizedstatequeuepending)
+## [4. Pending Update Queue and Lane Priority](#4-Pending-Update-Queue-and-Lane-Priority)
 
 There are three types of pending update queues:
-1. `interleaved` Queue: Stores updates that occur outside the render phase.
-2. `baseQueue`: Stores updates that were skipped due to lower priority during the current processing.
-3. `pending` Queue: Stores updates that will be processed in the next `updateReducer()` call.
+1. `memoizedState.queue.interleaved`: Stores updates that occur outside the render phase.
+2. `memoizedState.queue.pending`: Stores updates that will be processed in the next `updateReducer()` call.
+3. `memoizedState.baseQueue`: Stores updates that were skipped due to lower priority during the current processing.
+
 
 ![pending-update-queue](/static/images/posts/how-useState-hook-works-internally-in-react-18/pending-update-queue.png)
 
 
-Before `updateReducer()` is invoked, both the `interleaved` and `baseQueue` are merged into the `pending` queue.
-
-
+During the render phase, `renderRootSync()` or `renderRootConcurrent()` invokes  `prepareFreshStack()` that in turn invokes `finishQueueingConcurrentUpdates()` to merge the updates in the `interleaved` into the `pending` queue.
 ![finishQueueingConcurrentUpdates-screenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/finishQueueingConcurrentUpdates-screenshot.png)
 
 
+Next, the `updateReducer()` will be invoked that merges the updates in the `pending` queue into the `baseQueue` and then traverses the `baseQueue`, executing the callbacks for the updates that match the current update priority. \
+Updates that do not meet the required priority are stored back in the `baseQueue`, awaiting the next rendering cycle to be processed.
+![updateReducer-screenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateReducer-screenshot.png)
+
+
+### [State Updates During Render](#state-updates-during-render)
 When a state update is triggered during the render phase, React cannot immediately re-render the component because it is already in the middle of the rendering process. In this scenario, `dispatchSetState()` invokes `enqueueRenderPhaseUpdate()` to queue the update object into `memoizedState.queue.pending`. React processes these pending updates after the current render is completed, which may lead to another render to apply the state changes.
 
 However, triggering state updates during the render phase is generally considered an **anti-pattern**, as it can lead to unintended side effects and potentially cause React to enter an infinite loop.
@@ -237,7 +244,7 @@ export function Counter() {
 
 ![state-update-during-render](/static/images/posts/how-useState-hook-works-internally-in-react-18/state-update-during-render.png)
 
-## [5. State Updates](#5-state-updates)
+## [5. Applying State Changes](#5-applying-state-changes)
 - When a `setState()` method is invoked, if the `memoizedState.queue.interleaved` queue is empty, React can compute the next state immediately. If the new state is the same as the current state, React skips scheduling a re-render, allowing an early bailout.
 
 - Otherwise, React creates an update object representing the update information, stores it in the fiber, and schedules a re-render.
@@ -251,13 +258,12 @@ During the re-render:
 (c) `renderWithHooks()` then invokes the component function to create a new fiber. During the component function's execution, `useState()` is invoked, which now points to the `updateState()` implementation. Internally, `updateState()` calls `updateReducer()` to process the pending updates.
 
 
-(d) `updateReducer()` first merges the updates in the pending queue into a base queue and then traverses the base queue, executing callbacks for the updates that match the current update priority. Updates that do not meet the required priority are stored back in the base queue, awaiting the next rendering cycle to be processed.
+(d) `updateReducer()` executes callbacks for the updates that match the current update priority. Updates that do not meet the required priority are stored back in the base queue, awaiting the next rendering cycle to be processed.
 
 
 The call graph for render process is illustrated as below:
 ![updateState-call-graph](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateState-call-graph.png)
 
-![updateReducer-sreenshot](/static/images/posts/how-useState-hook-works-internally-in-react-18/updateReducer-sreenshot.png)
 
 
 ## [Conclusion](#conclusion)

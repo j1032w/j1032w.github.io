@@ -34,54 +34,27 @@ https://babeljs.io/repl
 ## [React Element](#react-element)
 
 A React component is essentially a function that returns React elements. For example:
-```
+```jsx
 function App() {
   const [count, setCount] = useState(0);
   const handleClick = () => {
     setCount(count + 1);
   };
 
-  return (
+  const reactElementApp= (
     <div className="counter">
       <h2>Count: {count}</h2>
       <button onClick={handleClick}>Increment</button>
     </div>
   );
+
+  console.log(reactElementApp);
+
+  return reactElementApp ;
 }
 ```
-This component returns a structure of React elements, which can be visualized as:
-```
-{
-  type: 'div',
-  props: {
-    className: 'counter',
-    children: [
-      {
-        type: 'h2',
-        props: {
-          children: [
-            'Count: ',
-            count
-          ]
-        },
-        key: null,
-        ref: null
-      },
-      {
-        type: 'button',
-        props: {
-          onClick: handleClick,
-          children: 'Increment'
-        },
-        key: null,
-        ref: null
-      }
-    ]
-  },
-  key: null,
-  ref: null
-}
-```
+The returned React element is a plain JavaScript object:
+![react-element-screenshot](/static/images/posts/understanding-the-virtual-dom-in-react/react-element-screenshot.png)
 
 ## [Virtual DOM](#virtual-dom)
 When React renders the UI, it first invokes the component functions and traverses the returned React elements. This process continues recursively until React reaches scalar values (which are rendered as text nodes) or encounters null or undefined values (which render nothing). This process transforms JSX code into a tree of React elements, traditionally known as the 'virtual DOM'.
