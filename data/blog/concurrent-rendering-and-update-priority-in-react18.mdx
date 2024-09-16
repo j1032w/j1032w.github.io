@@ -261,7 +261,7 @@ export default function I({children}: {children?: ReactNode}) {
 
 
 
-### [2. Marking Pending Fibers in the Tree](#2-marking-pending-fibers-in-the-tree)
+### [2. Marking Pending Updates in the Fiber Tree](#2-marking-pending-updates-in-the-fiber-tree)
 React creates an update object with the determined lane and attaches it to the fiber node using `enqueueConcurrentHookUpdate()`. This function triggers `markUpdateLaneFromFiberToRoot()`, which is responsible for marking all affected fibers from the current fiber up through the parent path to the root. This process serves two primary purposes:
 
 - **Merging Update Lane Priorities**: The function merges the update lane priority into the lanes property of the current fiber node. This merge indicates that the fiber has pending work that needs to be processed during the next render.
@@ -276,18 +276,19 @@ Then React sets the lanes property of the Counter fiber to `0b10000001` and the 
 ![marking-pending-fibers-in-the-tree-screenshot](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/marking-pending-fibers-in-the-tree-screenshot.png)
 
 
-### [3. Batching and Interupting Updates](#3-batching-and-interupting-updates)
+### [3. Batching and Interrupting Updates](#3-batching-and-interrupting-updates)
 React invokes the `scheduleUpdateOnFiber()` function to schedule a re-render. Here’s how React manages this process:
 
-a) **Updating Root Pending Lane**: React invokes `markRootUpdated()` to combine all fibers' update lanes into the root's `pendingLanes`, and set the `eventTime` for the root, marking the time when the current event occurred. After updating the root, React calls 1ensureRootIsScheduled()1, which orchestrates several key actions below.
+a) **Updating Root Pending Lane**: React invokes `markRootUpdated()` to combine all fibers' update lanes into the root's `pendingLanes`, and set the `eventTime` for the root, marking the time when the current event occurred. After updating the root, React calls `ensureRootIsScheduled()`, which orchestrates several key actions below.
 
 b) **Preventing Lane Starvation**: React invokes `markStarvedLanesAsExpired()` to handle lanes that have exceeded their expiration time. Lanes marked as expired are prioritized for synchronous execution in the next task cycle, bypassing time slicing. This function calculates the expiration time for the current update lane, stores it in the root's expirationTimes array, and combines the expired lanes into `root.expiredLanes`, ensuring they are processed without delay.
 
 
-
 c) **Processing the Highest Update Lane**:\
 Then React invokes `getHighestPriorityLane()` to determine the most urgent update lane from the root fiber.
-- **Batching Updates**: When the newly identified highest priority update matches the current pending task (`root.callbackPriority`), React skips scheduling a new task and returns immediately, thus the current scheduled task will process the new update with others together.
+
+#### [Batching Updates](#batching-updates)
+When the newly identified the highest priority update matches the current pending task (`root.callbackPriority`), React skips scheduling a new task and returns immediately, thus the current scheduled task will process the new update with others together.
 This mechanism prevents redundant task scheduling and ensures that updates with same priority will be processed in the same event cycle. \
 For instance, in the above Counter component example, three `setState()` calls within the click handler are batched, resulting in only one task being scheduled. A fourth `setState()` call within a `startTransition` is assigned a different lane, thus another scheduled task will process it.\
  Otherwise, it updates `root.callbackPriority` with the new highest priority lane.
@@ -295,28 +296,31 @@ For instance, in the above Counter component example, three `setState()` calls w
 ![batching-update](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/batching-update.png)
 
 
-- **Interrupting Lower-Priority Updates**: When the newly determined highest priority update is higher than the current `root.callbackPriority`, React cancels the ongoing task by set the task's callback to `null`. This prevents lower-priority work from blocking more critical updates. Then React schedules a new task with the new priority lane to processes this more urgent update first, ensuring that React prioritizes the most important work. \
+#### [Interrupting Lower Priority Updates](#interrupting-lower-priority-updates)
+When the newly determined highest priority update is higher than the current `root.callbackPriority`, React cancels the ongoing task by set the task's callback to `null`. This prevents lower-priority work from blocking more critical updates. Then React schedules a new task with the new priority lane to processes this more urgent update first, ensuring that React prioritizes the most important work. \
 After completing this higher-priority update, React continues by scheduling another task for the next highest priority lane, effectively creating a cascading sequence of tasks based on priority.
 This dynamic adjustment allows React to handle new, higher-priority tasks efficiently as they emerge, maintaining optimal performance.
 
 
 
-d) **Scheduling New Tasks**: If the highest priority update lane is `SyncLane`, React recognizes the need for immediate execution. In this case, it invokes `scheduleSyncCallback()` to maintain a queue of synchronous tasks. Following this, `flushSyncCallbacks()` is called to execute all pending updates in the highest priority lane without delay. \
-For other lanes, React uses `scheduleCallback()`, allowing the task to be processed concurrently. During the rendering commit phase, React once again calls `ensureRootIsScheduled()` to continue processing updates, starting with the next highest priority lane. This priority-based scheduling system ensures that React efficiently manages updates, processing them lane by lane, and dynamically responding to new, higher-priority updates as they come in.
+### [4. Scheduling New Tasks](#4-scheduling-new-tasks)
+If the highest priority update lane is `SyncLane`, React invokes `scheduleSyncCallback()` to add the task to the `syncQueue`, which is a simple array that holds all high-priority tasks. React then calls `scheduleMicrotask()` to enqueue `flushSyncCallbacks()` into the JavaScript microtask queue, ensuring that `flushSyncCallbacks()` is executed immediately after the JavaScript event loop completes its current work.
+
+When `flushSyncCallbacks()` runs, it processes all pending updates in the `syncQueue` synchronously, without introducing any time-slicing delays.
+
+For non-synchronous lanes, React invokes `scheduleCallback()` to add the task to the React internal task queue. This queue is managed internally by React and is designed to yield control back to the browser if the task execution time exceeds approximately 5ms. React’s priority-based scheduling system ensures efficient handling of updates, processing them lane by lane, and dynamically adjusting to new, higher-priority updates as they arise.
+
+For more details on how the React Scheduler manages its task queue, refer to the next section.
 
 ![handle-update-priority-call-graph](/static/images/posts/concurrent-rendering-and-update-priority-in-react18/handle-update-priority-call-graph.png)
 
 
 
 
-
 ## [Task Scheduler](#managing-the-task-queue)
 
-
-
-### [1. React Internal Task Queue](#1-react-internal-task-queue)
+### [1. React Scheduler Task Queue](#1-react-scheduler-task-queue)
 React Scheduler internally maintains a task queue, where each task represents a discrete unit of work. The `scheduleCallback()` method is the entry point for adding tasks to this queue.
-
 
 
 - a). **Calculating Expiration Time**: When a task is scheduled, React first calculates an expiration time based on the task's priority. This ensures that high-priority tasks are executed promptly, while lower-priority tasks can be deferred if necessary.
@@ -351,7 +355,7 @@ function unstable_scheduleCallback(priorityLevel, callback, options) {
 However, it’s crucial to understand that this task object does not hold information about the pending fiber. The rendering process then begins from the root node, progressing lane by lane based on priority.
 
 
-### [2. Integrating with the JavaScript Event Loop](#2-two-distinct-task-queues)
+### [2. JavaScript Task Queue](#2-integrating-with-the-javascript-task-queue)
 React’s task management involves two distinct task queues that work in tandem:
 
 - **React's Internal Task Queue**: This queue is managed by React itself. It holds tasks related to rendering updates, state changes, and other internal operations.
@@ -390,7 +394,7 @@ The `schedulePerformWorkUntilDeadline()` is to add `performWorkUntilDeadline()` 
 - **Browser Environment**: In a browser environment, React uses `MessageChannel` to enqueue  callbacks. Before React v16.10, a combination of `requestAnimationFrame()` and `setTimeout()` was used. However, this method had its drawbacks, particularly because `requestAnimationFrame()` halts execution when the tab is backgrounded or when performance-saving measures are in place, leading to a poor user experience.\
  The pull request that introduced this change can be found here.\
 https://github.com/facebook/react/pull/16214 \
-\
+
 While `setTimeout(fn, 0)` can be a viable solution, but according to the HTML Standard, when the nesting level of setTimeout calls exceeds 5, the timeout is automatically adjusted to 4 milliseconds. This delay, although small, can accumulate and lead to performance issues. \
 More details on this behavior can be found in the HTML specification here.\
 https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-settimeout
