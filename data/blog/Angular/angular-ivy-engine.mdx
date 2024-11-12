@@ -1,0 +1,111 @@
+---
+title: 'Angular Ivy Engine: Efficient Rendering Without Virtual DOM Overhead'
+date: '2024-11-12'
+lastmod: '2024-11-12'
+tags: ['Angular', 'Ivy']
+draft: false
+summary: 'Delves into how Angular Ivy rendering engine optimizes application performance without relying on a virtual DOM.'
+images: []
+---
+
+
+## [Introduction](#introduction)
+Introduced in Angular 9, **Ivy** became the default rendering engine, replacing the older View Engine to bring enhanced efficiency and performance. Angular 18 builds upon Ivy's robust foundation, adding new optimizations and advanced features that continue to leverage its capabilities.
+
+One of Ivy's core principles is its **Incremental DOM** approach. Unlike React.js, which re-renders the virtual DOM/ Fiber tree and then calculates differences (or "reconciling") before applying changes, Angular Ivy updates only the parts of the DOM that have actually changed. This targeted approach minimizes memory usage because Ivy doesn't require additional memory to re-render components unless the DOM is actually modified. Memory is allocated only when new DOM nodes are added or removed, and the size of the allocation corresponds directly to the scope of the change.
+
+It’s not that React is inherently slow — React is, in fact, very performant, especially with techniques like `React.memo`, `useMemo` hooks, and optimal state management to avoid unnecessary re-renders, moving state down or using children props. However, Angular's Ivy engine delivers similar efficiencies by default. Additionally, Angular offers the `OnPush` change detection strategy, which, much like `React.memo`, enables more granular control over re-renders and can further boost application performance.
+
+
+- [Introduction](#introduction)
+- [Compilation Phase: Rendering Instructions](#compilation-phase-rendering-instructions)
+- [Changing Detection](#changing-detection)
+- [Execution Phase: Updating the DOM](#execution-phase-updating-the-dom)
+  - [Skipping Unchanged Instructions](#skipping-unchanged-instructions)
+  - [Executing the Instructions](#executing-the-instructions)
+- [Conclusion](#conclusion)
+
+## [Compilation Phase: Rendering Instructions](#compilation-phase-rendering-instructions)
+At build time (or [JIT](https://angular.dev/tools/cli/aot-compiler#choosing-a-compiler) if you're not using [AOT](https://angular.dev/tools/cli/aot-compiler#)), Angular uses the component’s decorator metadata (e.g., `@Component`) to generate a component definition. This process translates HTML templates into low-level rendering instructions, stored within the component definition. These instructions describe the DOM structure, binding information, and event listeners, laying the groundwork for optimized updates.
+
+Consider this example component in Angular 18.2.0:
+
+```TypeScript
+@Component({
+  selector: 'app-root',
+  template: `
+    <app-counter [items]="items" [counter]="counter"></app-counter>
+    <button (click)="addItem()">Add Item</button>
+    <button (click)="increaseCounter()">Increment</button>
+  `
+})
+export class AppComponent {
+  items = ['item1', 'item2', 'item3'];
+  counter = 0;
+
+  addItem() {
+    this.items.push(`item${this.items.length + 1}`);
+  }
+
+  increaseCounter() {
+    this.counter++;
+  }
+}
+
+@Component({
+  selector: 'app-counter',
+  template: `
+    <h1>A Counter: {{ counter }}</h1>
+    <ul>
+      <li *ngFor="let item of items">{{ item }}</li>
+    </ul>
+  `
+})
+export class CounterComponent {
+  @Input() counter!: number;
+  @Input() items!: string[];
+}
+```
+
+The component will compile into Angular Ivy's optimized instruction set (e.g., `ɵɵelementStart`, `ɵɵtext`, `ɵɵproperty`). It's worth noting that `ɵ` (Theta) is used to signify methods that are private to Angular's framework internals and should not be accessed directly by developers.
+
+![angular-ivy-compiled-component-class-screenshots](/static/images/posts/angular/angular-ivy-engine/angular-ivy-compiled-component-class-screenshot.png)
+
+
+
+
+## [Changing Detection](#changing-detection)
+When app initializes, Angular subscribes to `zone.onMicrotaskEmpty`, an observable that emits whenever asynchronous tasks complete and the microtask queue empties (for example, after an event listener executes, a `Promise` resolves, or a `setTimeout` callback runs).
+
+
+Once `onMicrotaskEmpty` emits, Angular invokes `applicationRef.tick()`, initiating the change detection process. The `tick()` in turn will execute the component definition's template function, which will update the DOM based on the instructions generated during the compilation phase.
+
+![angular-ivy-updating-applicationRef.tick()-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-applicationRef.tick()-screenshot.png)
+
+
+
+## [Execution Phase: Updating the DOM](#execution-phase-updating-the-dom)
+### [Skipping Unchanged Instructions](#skipping-unchanged-instructions)
+Imagine clicking the "Add Item" button in our example. This action updates the `<ul>` list of items but leaves the `<h1>` counter unchanged.
+![angular-ivy-updating-template-function-invoked-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-template-function-invoked-screenshot.png)
+
+Angular Ivy’s incremental DOM approach will update only the `<ul>` list, bypassing any re-render of `<h1>`. This means that any instruction associated with the `<h1>` counter is skipped, conserving memory and CPU cycles.
+![angular-ivy-updating-skip-text-updating-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-skip-text-updating-screenshot.png)
+
+
+### [Executing the Instructions](#executing-the-instructions)
+If the "Increment" button is clicked, however, Angular will execute the instruction for `<h1>`, triggering the `updateTextNode()` method to update the counter's displayed value. 
+
+![angular-ivy-updating-updateTextNode-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-updateTextNode-screenshot.png)
+
+
+If you click `parentElement` in the left pane, you can observe the DOM element in the DevTools window, so the `updateTextNode()` method does refer the real DOM element.
+![angular-ivy-updating-DevTools-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-DevTools-screenshot.png)
+
+
+## [Conclusion](#conclusion)
+Each component template in Angular is compiled into a sequence of instructions (such as `ɵɵelementStart`, `ɵɵtext`, and `ɵɵproperty`) that are embedded directly in the component's definition. Unused components are tree-shaken out of the final bundle, reducing the bundle size for faster loads.
+
+Angular Ivy only invokes instructions related to the specific changes in state or properties, skipping over unaffected elements. This incremental DOM approach negates the need for extra memory for re-rendering, making Ivy an exceptionally memory-efficient rendering engine.
+
+
