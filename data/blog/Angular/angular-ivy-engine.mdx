@@ -19,7 +19,7 @@ It’s not that React is inherently slow — React is, in fact, very performant,
 
 - [Introduction](#introduction)
 - [Compilation Phase: Rendering Instructions](#compilation-phase-rendering-instructions)
-- [Changing Detection](#changing-detection)
+- [Changing Detection: Detecting Asynchronous Operations](#changing-detection-detecting-asynchronous-operations)
 - [Execution Phase: Updating the DOM](#execution-phase-updating-the-dom)
   - [Skipping Unchanged Instructions](#skipping-unchanged-instructions)
   - [Executing the Instructions](#executing-the-instructions)
@@ -74,11 +74,10 @@ The component will compile into Angular Ivy's optimized instruction set (e.g., `
 
 
 
-## [Changing Detection](#changing-detection)
-When app initializes, Angular subscribes to `zone.onMicrotaskEmpty`, an observable that emits whenever asynchronous tasks complete and the microtask queue empties (for example, after an event listener executes, a `Promise` resolves, or a `setTimeout` callback runs).
+## [Changing Detection: Detecting Asynchronous Operations](#changing-detection-detecting-asynchronous-operations)
+Angular leverages **Zone.js** to detect asynchronous operations. Zone.js patches asynchronous APIs like `setTimeout`, `Promise`, and event listeners to notify Angular when these operations complete. This allows Angular to initiate change detection at the right time, ensuring that the DOM is updated only when necessary.
 
-
-Once `onMicrotaskEmpty` emits, Angular invokes `applicationRef.tick()`, initiating the change detection process. The `tick()` in turn will execute the component definition's template function, which will update the DOM based on the instructions generated during the compilation phase.
+When app initializes, Angular subscribes to `zone.onMicrotaskEmpty`, an observable that emits whenever asynchronous tasks complete and the microtask queue empties. Once `onMicrotaskEmpty` emits, Angular invokes `applicationRef.tick()`, initiating the change detection process. The `tick()` in turn will execute the component definition's template function, which will update the DOM based on the instructions generated during the compilation phase.
 
 ![angular-ivy-updating-applicationRef.tick()-screenshot](/static/images/posts/angular/angular-ivy-engine/angular-ivy-updating-applicationRef.tick()-screenshot.png)
 
