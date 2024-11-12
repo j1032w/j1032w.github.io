@@ -388,7 +388,7 @@ The `schedulePerformWorkUntilDeadline()` is to add `performWorkUntilDeadline()` 
 
 - **Browser Environment**: In a browser environment, React uses `MessageChannel` to enqueue  callbacks. Before React v16.10, a combination of `requestAnimationFrame()` and `setTimeout()` was used. However, this method had its drawbacks, particularly because `requestAnimationFrame()` halts execution when the tab is backgrounded or when performance-saving measures are in place, leading to a poor user experience.\
  The pull request that introduced this change can be found here.\
-  https://github.com/facebook/react/pull/16214 \
+  https://github.com/facebook/react/pull/16214
 
   While `setTimeout(fn, 0)` can be a viable solution, but according to the HTML Standard, when the nesting level of setTimeout calls exceeds 5, the timeout is automatically adjusted to 4 milliseconds. This delay, although small, can accumulate and lead to performance issues. \
   More details on this behavior can be found in the HTML specification here.\
